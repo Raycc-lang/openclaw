@@ -132,7 +132,7 @@ export function buildXaiModelDefinition(): ModelDefinitionConfig {
 export function buildQianfanModelDefinition(): ModelDefinitionConfig {
   return {
     id: QIANFAN_DEFAULT_MODEL_ID,
-    name: "ERNIE 5.0",
+    name: "DEEPSEEK V3.2",
     reasoning: true,
     input: ["text"],
     cost: QIANFAN_DEFAULT_COST,
