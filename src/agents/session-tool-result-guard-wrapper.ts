@@ -5,6 +5,8 @@ import { installSessionToolResultGuard } from "./session-tool-result-guard.js";
 export type GuardedSessionManager = SessionManager & {
   /** Flush any synthetic tool results for pending tool calls. Idempotent. */
   flushPendingToolResults?: () => void;
+  /** Stop the timeout checker. Used for cleanup. */
+  stopTimeoutChecker?: () => void;
 };
 
 /**
@@ -17,12 +19,21 @@ export function guardSessionManager(
     agentId?: string;
     sessionKey?: string;
     allowSyntheticToolResults?: boolean;
+    /**
+     * Timeout in milliseconds for pending tool calls before a synthetic timeout error
+     * result is injected. Defaults to 60000 (60 seconds).
+     */
+    toolCallTimeoutMs?: number;
+    /**
+     * Interval in milliseconds for checking pending tool call timeouts.
+     * Defaults to 5000 (5 seconds).
+     */
+    timeoutCheckIntervalMs?: number;
   },
 ): GuardedSessionManager {
   if (typeof (sessionManager as GuardedSessionManager).flushPendingToolResults === "function") {
     return sessionManager as GuardedSessionManager;
   }
-
   const hookRunner = getGlobalHookRunner();
   const transform = hookRunner?.hasHooks("tool_result_persist")
     ? // oxlint-disable-next-line typescript/no-explicit-any
@@ -44,11 +55,13 @@ export function guardSessionManager(
         return out?.message ?? message;
       }
     : undefined;
-
   const guard = installSessionToolResultGuard(sessionManager, {
     transformToolResultForPersistence: transform,
     allowSyntheticToolResults: opts?.allowSyntheticToolResults,
+    toolCallTimeoutMs: opts?.toolCallTimeoutMs,
+    timeoutCheckIntervalMs: opts?.timeoutCheckIntervalMs,
   });
   (sessionManager as GuardedSessionManager).flushPendingToolResults = guard.flushPendingToolResults;
+  (sessionManager as GuardedSessionManager).stopTimeoutChecker = guard.stopTimeoutChecker;
   return sessionManager as GuardedSessionManager;
 }

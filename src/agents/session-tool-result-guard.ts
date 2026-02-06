@@ -1,16 +1,20 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { SessionManager } from "@mariozechner/pi-coding-agent";
 import { emitSessionTranscriptUpdate } from "../sessions/transcript-events.js";
-import { makeMissingToolResult, sanitizeToolCallInputs } from "./session-transcript-repair.js";
+import { makeMissingToolResult, makeToolTimeoutResult, sanitizeToolCallInputs } from "./session-transcript-repair.js";
 
 type ToolCall = { id: string; name?: string };
+
+type PendingToolCall = {
+  name: string | undefined;
+  deadlineAt: number;
+};
 
 function extractAssistantToolCalls(msg: Extract<AgentMessage, { role: "assistant" }>): ToolCall[] {
   const content = msg.content;
   if (!Array.isArray(content)) {
     return [];
   }
-
   const toolCalls: ToolCall[] = [];
   for (const block of content) {
     if (!block || typeof block !== "object") {
@@ -58,13 +62,23 @@ export function installSessionToolResultGuard(
      * Defaults to true.
      */
     allowSyntheticToolResults?: boolean;
+    /**
+     * Timeout in milliseconds for pending tool calls before a synthetic timeout error
+     * result is injected. Defaults to 60000 (60 seconds).
+     */
+    toolCallTimeoutMs?: number;
+    /**
+     * Interval in milliseconds for checking pending tool call timeouts.
+     * Defaults to 5000 (5 seconds).
+     */
+    timeoutCheckIntervalMs?: number;
   },
-): {
-  flushPendingToolResults: () => void;
-  getPendingIds: () => string[];
-} {
+): { flushPendingToolResults: () => void; getPendingIds: () => string[]; stopTimeoutChecker: () => void } {
   const originalAppend = sessionManager.appendMessage.bind(sessionManager);
-  const pending = new Map<string, string | undefined>();
+  const pending = new Map<string, PendingToolCall>();
+  
+  const toolCallTimeoutMs = opts?.toolCallTimeoutMs ?? 60000;
+  const timeoutCheckIntervalMs = opts?.timeoutCheckIntervalMs ?? 5000;
 
   const persistToolResult = (
     message: AgentMessage,
@@ -81,18 +95,69 @@ export function installSessionToolResultGuard(
       return;
     }
     if (allowSyntheticToolResults) {
-      for (const [id, name] of pending.entries()) {
-        const synthetic = makeMissingToolResult({ toolCallId: id, toolName: name });
+      for (const [id, info] of pending.entries()) {
+        const synthetic = makeMissingToolResult({ toolCallId: id, toolName: info.name });
         originalAppend(
           persistToolResult(synthetic, {
             toolCallId: id,
-            toolName: name,
+            toolName: info.name,
             isSynthetic: true,
           }) as never,
         );
       }
     }
     pending.clear();
+  };
+
+  const checkTimeouts = () => {
+    const now = Date.now();
+    const timedOut: Array<{ id: string; info: PendingToolCall }> = [];
+    
+    for (const [id, info] of pending.entries()) {
+      if (now >= info.deadlineAt) {
+        timedOut.push({ id, info });
+      }
+    }
+    
+    for (const { id, info } of timedOut) {
+      pending.delete(id);
+      if (allowSyntheticToolResults) {
+        const synthetic = makeToolTimeoutResult({
+          toolCallId: id,
+          toolName: info.name,
+          timeoutMs: toolCallTimeoutMs,
+        });
+        originalAppend(
+          persistToolResult(synthetic, {
+            toolCallId: id,
+            toolName: info.name,
+            isSynthetic: true,
+          }) as never,
+        );
+      }
+    }
+    
+    if (pending.size > 0) {
+      timeoutTimer = setTimeout(checkTimeouts, timeoutCheckIntervalMs);
+    }
+  };
+
+  let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const startTimeoutChecker = () => {
+    if (timeoutTimer) {
+      clearTimeout(timeoutTimer);
+    }
+    if (pending.size > 0) {
+      timeoutTimer = setTimeout(checkTimeouts, timeoutCheckIntervalMs);
+    }
+  };
+
+  const stopTimeoutChecker = () => {
+    if (timeoutTimer) {
+      clearTimeout(timeoutTimer);
+      timeoutTimer = null;
+    }
   };
 
   const guardedAppend = (message: AgentMessage) => {
@@ -109,61 +174,62 @@ export function installSessionToolResultGuard(
       nextMessage = sanitized[0];
     }
     const nextRole = (nextMessage as { role?: unknown }).role;
-
     if (nextRole === "toolResult") {
       const id = extractToolResultId(nextMessage as Extract<AgentMessage, { role: "toolResult" }>);
-      const toolName = id ? pending.get(id) : undefined;
+      const pendingInfo = id ? pending.get(id) : undefined;
       if (id) {
         pending.delete(id);
+        if (pending.size === 0) {
+          stopTimeoutChecker();
+        }
       }
       return originalAppend(
         persistToolResult(nextMessage, {
           toolCallId: id ?? undefined,
-          toolName,
+          toolName: pendingInfo?.name,
           isSynthetic: false,
         }) as never,
       );
     }
-
     const toolCalls =
       nextRole === "assistant"
         ? extractAssistantToolCalls(nextMessage as Extract<AgentMessage, { role: "assistant" }>)
         : [];
-
     if (allowSyntheticToolResults) {
       // If previous tool calls are still pending, flush before non-tool results.
       if (pending.size > 0 && (toolCalls.length === 0 || nextRole !== "assistant")) {
         flushPendingToolResults();
+        stopTimeoutChecker();
       }
       // If new tool calls arrive while older ones are pending, flush the old ones first.
       if (pending.size > 0 && toolCalls.length > 0) {
         flushPendingToolResults();
+        stopTimeoutChecker();
       }
     }
-
     const result = originalAppend(nextMessage as never);
-
     const sessionFile = (
       sessionManager as { getSessionFile?: () => string | null }
     ).getSessionFile?.();
     if (sessionFile) {
       emitSessionTranscriptUpdate(sessionFile);
     }
-
     if (toolCalls.length > 0) {
+      const deadlineAt = Date.now() + toolCallTimeoutMs;
       for (const call of toolCalls) {
-        pending.set(call.id, call.name);
+        pending.set(call.id, { name: call.name, deadlineAt });
       }
+      startTimeoutChecker();
     }
-
     return result;
   };
 
   // Monkey-patch appendMessage with our guarded version.
   sessionManager.appendMessage = guardedAppend as SessionManager["appendMessage"];
-
+  
   return {
     flushPendingToolResults,
     getPendingIds: () => Array.from(pending.keys()),
+    stopTimeoutChecker,
   };
 }

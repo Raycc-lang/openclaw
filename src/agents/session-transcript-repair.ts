@@ -89,7 +89,24 @@ function makeMissingToolResult(params: {
   } as Extract<AgentMessage, { role: "toolResult" }>;
 }
 
-export { makeMissingToolResult };
+function makeToolTimeoutResult(params: { toolCallId: string; toolName?: string; timeoutMs?: number }): Extract<AgentMessage, { role: "toolResult" }> {
+  const timeoutSec = params.timeoutMs ? Math.round(params.timeoutMs / 1000) : 60;
+  return {
+    role: "toolResult",
+    toolCallId: params.toolCallId,
+    toolName: params.toolName ?? "unknown",
+    content: [
+      {
+        type: "text",
+        text: `[openclaw] tool call timed out after ${timeoutSec} seconds without receiving a result.`,
+      },
+    ],
+    isError: true,
+    timestamp: Date.now(),
+  } as Extract<AgentMessage, { role: "toolResult" }>;
+}
+
+export { makeMissingToolResult, makeToolTimeoutResult };
 
 export type ToolCallInputRepairReport = {
   messages: AgentMessage[];
