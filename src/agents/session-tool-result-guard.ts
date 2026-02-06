@@ -196,7 +196,7 @@ export function installSessionToolResultGuard(
       return originalAppend(
         persistToolResult(nextMessage, {
           toolCallId: id ?? undefined,
-          toolName: pendingInfo?.name,
+          toolName: pendingInfo?.name ?? toolNameFromCache,
           isSynthetic: false,
         }) as never,
       );
