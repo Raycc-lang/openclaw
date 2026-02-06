@@ -425,6 +425,7 @@ export async function runEmbeddedAttempt(
         agentId: sessionAgentId,
         sessionKey: params.sessionKey,
         allowSyntheticToolResults: transcriptPolicy.allowSyntheticToolResults,
+      toolCallTimeoutMs: params.config?.agents?.defaults?.toolCallTimeoutSeconds ? params.config.agents.defaults.toolCallTimeoutSeconds * 1000 : undefined,
       });
       trackSessionManagerAccess(params.sessionFile);
 
