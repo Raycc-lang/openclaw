@@ -89,7 +89,11 @@ function makeMissingToolResult(params: {
   } as Extract<AgentMessage, { role: "toolResult" }>;
 }
 
-function makeToolTimeoutResult(params: { toolCallId: string; toolName?: string; timeoutMs?: number }): Extract<AgentMessage, { role: "toolResult" }> {
+function makeToolTimeoutResult(params: {
+  toolCallId: string;
+  toolName?: string;
+  timeoutMs?: number;
+}): Extract<AgentMessage, { role: "toolResult" }> {
   const timeoutSec = params.timeoutMs ? Math.round(params.timeoutMs / 1000) : 60;
   return {
     role: "toolResult",

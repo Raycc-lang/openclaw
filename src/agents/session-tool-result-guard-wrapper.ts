@@ -9,6 +9,15 @@ export type GuardedSessionManager = SessionManager & {
   stopTimeoutChecker?: () => void;
 };
 
+const guardMetadata = new WeakMap<
+  SessionManager,
+  {
+    toolCallTimeoutMs?: number;
+    timeoutCheckIntervalMs?: number;
+    allowSyntheticToolResults?: boolean;
+  }
+>();
+
 /**
  * Apply the tool-result guard to a SessionManager exactly once and expose
  * a flush method on the instance for easy teardown handling.
@@ -19,25 +28,37 @@ export function guardSessionManager(
     agentId?: string;
     sessionKey?: string;
     allowSyntheticToolResults?: boolean;
-    /**
-     * Timeout in milliseconds for pending tool calls before a synthetic timeout error
-     * result is injected. Defaults to 60000 (60 seconds).
-     */
     toolCallTimeoutMs?: number;
-    /**
-     * Interval in milliseconds for checking pending tool call timeouts.
-     * Defaults to 5000 (5 seconds).
-     */
     timeoutCheckIntervalMs?: number;
   },
 ): GuardedSessionManager {
-  if (typeof (sessionManager as GuardedSessionManager).flushPendingToolResults === "function") {
+  const existing = guardMetadata.get(sessionManager);
+  if (existing) {
+    // Guard already installed - check for option changes
+    if (
+      opts?.toolCallTimeoutMs !== undefined &&
+      opts.toolCallTimeoutMs !== existing.toolCallTimeoutMs
+    ) {
+      console.warn(
+        "guardSessionManager: toolCallTimeoutMs changed but guard was already installed. " +
+          "New timeout will not take effect. Consider creating a new session manager.",
+      );
+    }
+    if (
+      opts?.timeoutCheckIntervalMs !== undefined &&
+      opts.timeoutCheckIntervalMs !== existing.timeoutCheckIntervalMs
+    ) {
+      console.warn(
+        "guardSessionManager: timeoutCheckIntervalMs changed but guard was already installed. " +
+          "New interval will not take effect. Consider creating a new session manager.",
+      );
+    }
     return sessionManager as GuardedSessionManager;
   }
+
   const hookRunner = getGlobalHookRunner();
   const transform = hookRunner?.hasHooks("tool_result_persist")
-    ? // oxlint-disable-next-line typescript/no-explicit-any
-      (message: any, meta: { toolCallId?: string; toolName?: string; isSynthetic?: boolean }) => {
+    ? (message: any, meta: { toolCallId?: string; toolName?: string; isSynthetic?: boolean }) => {
         const out = hookRunner.runToolResultPersist(
           {
             toolName: meta.toolName,
@@ -55,13 +76,22 @@ export function guardSessionManager(
         return out?.message ?? message;
       }
     : undefined;
+
   const guard = installSessionToolResultGuard(sessionManager, {
     transformToolResultForPersistence: transform,
     allowSyntheticToolResults: opts?.allowSyntheticToolResults,
     toolCallTimeoutMs: opts?.toolCallTimeoutMs,
     timeoutCheckIntervalMs: opts?.timeoutCheckIntervalMs,
   });
+
   (sessionManager as GuardedSessionManager).flushPendingToolResults = guard.flushPendingToolResults;
   (sessionManager as GuardedSessionManager).stopTimeoutChecker = guard.stopTimeoutChecker;
+
+  guardMetadata.set(sessionManager, {
+    toolCallTimeoutMs: opts?.toolCallTimeoutMs,
+    timeoutCheckIntervalMs: opts?.timeoutCheckIntervalMs,
+    allowSyntheticToolResults: opts?.allowSyntheticToolResults,
+  });
+
   return sessionManager as GuardedSessionManager;
 }

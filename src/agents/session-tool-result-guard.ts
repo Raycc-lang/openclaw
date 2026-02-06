@@ -1,7 +1,11 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { SessionManager } from "@mariozechner/pi-coding-agent";
 import { emitSessionTranscriptUpdate } from "../sessions/transcript-events.js";
-import { makeMissingToolResult, makeToolTimeoutResult, sanitizeToolCallInputs } from "./session-transcript-repair.js";
+import {
+  makeMissingToolResult,
+  makeToolTimeoutResult,
+  sanitizeToolCallInputs,
+} from "./session-transcript-repair.js";
 
 type ToolCall = { id: string; name?: string };
 
@@ -73,10 +77,15 @@ export function installSessionToolResultGuard(
      */
     timeoutCheckIntervalMs?: number;
   },
-): { flushPendingToolResults: () => void; getPendingIds: () => string[]; stopTimeoutChecker: () => void } {
+): {
+  flushPendingToolResults: () => void;
+  getPendingIds: () => string[];
+  stopTimeoutChecker: () => void;
+} {
   const originalAppend = sessionManager.appendMessage.bind(sessionManager);
   const pending = new Map<string, PendingToolCall>();
-  
+  const toolCallNames = new Map<string, string | undefined>();
+
   const toolCallTimeoutMs = opts?.toolCallTimeoutMs ?? 60000;
   const timeoutCheckIntervalMs = opts?.timeoutCheckIntervalMs ?? 5000;
 
@@ -112,13 +121,13 @@ export function installSessionToolResultGuard(
   const checkTimeouts = () => {
     const now = Date.now();
     const timedOut: Array<{ id: string; info: PendingToolCall }> = [];
-    
+
     for (const [id, info] of pending.entries()) {
       if (now >= info.deadlineAt) {
         timedOut.push({ id, info });
       }
     }
-    
+
     for (const { id, info } of timedOut) {
       pending.delete(id);
       if (allowSyntheticToolResults) {
@@ -136,7 +145,7 @@ export function installSessionToolResultGuard(
         );
       }
     }
-    
+
     if (pending.size > 0) {
       timeoutTimer = setTimeout(checkTimeouts, timeoutCheckIntervalMs);
     }
@@ -177,6 +186,7 @@ export function installSessionToolResultGuard(
     if (nextRole === "toolResult") {
       const id = extractToolResultId(nextMessage as Extract<AgentMessage, { role: "toolResult" }>);
       const pendingInfo = id ? pending.get(id) : undefined;
+      const toolNameFromCache = id ? toolCallNames.get(id) : undefined;
       if (id) {
         pending.delete(id);
         if (pending.size === 0) {
@@ -218,6 +228,7 @@ export function installSessionToolResultGuard(
       const deadlineAt = Date.now() + toolCallTimeoutMs;
       for (const call of toolCalls) {
         pending.set(call.id, { name: call.name, deadlineAt });
+        toolCallNames.set(call.id, call.name);
       }
       startTimeoutChecker();
     }
@@ -226,7 +237,7 @@ export function installSessionToolResultGuard(
 
   // Monkey-patch appendMessage with our guarded version.
   sessionManager.appendMessage = guardedAppend as SessionManager["appendMessage"];
-  
+
   return {
     flushPendingToolResults,
     getPendingIds: () => Array.from(pending.keys()),
