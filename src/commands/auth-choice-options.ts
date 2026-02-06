@@ -23,13 +23,8 @@ export type AuthChoiceGroupId =
   | "synthetic"
   | "venice"
   | "qwen"
-<<<<<<< HEAD
   | "xai"
   | "qianfan";
-=======
-  | "qianfan"
-  | "xai";
->>>>>>> 7a9deb240 (Resolve conflicts)
 
 export type AuthChoiceGroup = {
   value: AuthChoiceGroupId;

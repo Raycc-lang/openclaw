@@ -267,7 +267,6 @@ export async function applyNonInteractiveAuthChoice(params: {
     });
     return applyQianfanConfig(nextConfig);
   }
-  }
 
   if (authChoice === "openai-api-key") {
     const resolved = await resolveNonInteractiveApiKey({
