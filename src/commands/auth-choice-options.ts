@@ -94,6 +94,12 @@ const AUTH_CHOICE_GROUP_DEFS: {
     choices: ["zai-api-key"],
   },
   {
+    value: "qianfan",
+    label: "Qianfan",
+    hint: "API key",
+    choices: ["qianfan-api-key"],
+  },
+  {
     value: "copilot",
     label: "Copilot",
     hint: "GitHub + local proxy",
