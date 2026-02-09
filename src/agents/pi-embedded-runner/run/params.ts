@@ -100,5 +100,6 @@ export type RunEmbeddedPiAgentParams = {
   extraSystemPrompt?: string;
   streamParams?: AgentStreamParams;
   ownerNumbers?: string[];
+  fallbacksOverride?: string[];
   enforceFinalTag?: boolean;
 };
