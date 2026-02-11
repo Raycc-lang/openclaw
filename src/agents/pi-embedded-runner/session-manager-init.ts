@@ -1,8 +1,6 @@
-import fs from "node:fs/promises";
-
 /**
- * NOTE: fs import retained only for potential future use.
- * File I/O migrated to Bun native operations for performance.
+ * NOTE: File I/O migrated to Bun native operations for performance.
+ * No fs/promises import needed as all operations use Bun.write.
  */
 
 type SessionHeaderEntry = { type: "session"; id?: string; cwd?: string };

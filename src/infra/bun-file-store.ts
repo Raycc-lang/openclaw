@@ -59,9 +59,9 @@ export class BunFileStore {
 
   /**
    * Write file synchronously
-   * Note: Bun write is async-only, so this uses Bun.write but waits
+   * Note: Bun write is async-only, so this is not implemented
    */
-  writeTextSync(path: string, data: string): void {
+  writeTextSync(_path: string, _data: string): void {
     // Bun.write returns a Promise but can be used in a sync context with proper handling
     // For true sync operations in non-hot paths, we keep fs.writeFileSync
     // This method is provided for API compatibility but should be avoided
