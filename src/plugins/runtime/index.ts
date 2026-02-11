@@ -85,6 +85,11 @@ import { resolveAgentRoute } from "../../routing/resolve-route.js";
 import { textToSpeechTelephony } from "../../tts/tts.js";
 import { formatNativeDependencyHint } from "./native-deps.js";
 
+// Stub for removed loadWebMedia function (WhatsApp Web removed in miniAgent)
+const loadWebMedia = async () => {
+  throw new Error("loadWebMedia not available in miniAgent (WhatsApp Web removed)");
+};
+
 let cachedVersion: string | null = null;
 
 function resolveVersion(): string {
