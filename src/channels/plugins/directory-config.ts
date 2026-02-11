@@ -1,8 +1,6 @@
 import type { OpenClawConfig } from "../../config/types.js";
 import type { ChannelDirectoryEntry } from "./types.js";
 import { resolveDiscordAccount } from "../../discord/accounts.js";
-import { resolveSlackAccount } from "../../slack/accounts.js";
-import { resolveTelegramAccount } from "../../telegram/accounts.js";
 import { resolveWhatsAppAccount } from "../../web/accounts.js";
 import { isWhatsAppGroupJid, normalizeWhatsAppTarget } from "../../whatsapp/normalize.js";
 import { normalizeSlackMessagingTarget } from "./normalize/slack.js";
@@ -17,7 +15,6 @@ export type DirectoryConfigParams = {
 export async function listSlackDirectoryPeersFromConfig(
   params: DirectoryConfigParams,
 ): Promise<ChannelDirectoryEntry[]> {
-  const account = resolveSlackAccount({ cfg: params.cfg, accountId: params.accountId });
   const q = params.query?.trim().toLowerCase() || "";
   const ids = new Set<string>();
 
@@ -65,7 +62,6 @@ export async function listSlackDirectoryPeersFromConfig(
 export async function listSlackDirectoryGroupsFromConfig(
   params: DirectoryConfigParams,
 ): Promise<ChannelDirectoryEntry[]> {
-  const account = resolveSlackAccount({ cfg: params.cfg, accountId: params.accountId });
   const q = params.query?.trim().toLowerCase() || "";
   return Object.keys(account.config.channels ?? {})
     .map((raw) => raw.trim())
@@ -166,7 +162,6 @@ export async function listDiscordDirectoryGroupsFromConfig(
 export async function listTelegramDirectoryPeersFromConfig(
   params: DirectoryConfigParams,
 ): Promise<ChannelDirectoryEntry[]> {
-  const account = resolveTelegramAccount({ cfg: params.cfg, accountId: params.accountId });
   const q = params.query?.trim().toLowerCase() || "";
   const raw = [
     ...(account.config.allowFrom ?? []).map((entry) => String(entry)),
@@ -200,7 +195,6 @@ export async function listTelegramDirectoryPeersFromConfig(
 export async function listTelegramDirectoryGroupsFromConfig(
   params: DirectoryConfigParams,
 ): Promise<ChannelDirectoryEntry[]> {
-  const account = resolveTelegramAccount({ cfg: params.cfg, accountId: params.accountId });
   const q = params.query?.trim().toLowerCase() || "";
   return Object.keys(account.config.groups ?? {})
     .map((id) => id.trim())
