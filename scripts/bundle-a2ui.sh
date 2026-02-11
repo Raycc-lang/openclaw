@@ -28,7 +28,7 @@ INPUT_PATHS=(
 )
 
 compute_hash() {
-  ROOT_DIR="$ROOT_DIR" node --input-type=module - "${INPUT_PATHS[@]}" <<'NODE'
+  ROOT_DIR="$ROOT_DIR" bun - "${INPUT_PATHS[@]}" <<'NODE'
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";

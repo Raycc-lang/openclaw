@@ -67,6 +67,7 @@ export type RunEmbeddedPiAgentParams = {
   disableTools?: boolean;
   provider?: string;
   model?: string;
+  fallbacksOverride?: string[];
   authProfileId?: string;
   authProfileIdSource?: "auto" | "user";
   thinkLevel?: ThinkLevel;

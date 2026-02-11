@@ -34,7 +34,6 @@ export const SERVICE_AUDIT_CODES = {
   gatewayPathMissing: "gateway-path-missing",
   gatewayPathMissingDirs: "gateway-path-missing-dirs",
   gatewayPathNonMinimal: "gateway-path-nonminimal",
-  gatewayRuntimeBun: "gateway-runtime-bun",
   gatewayRuntimeNodeVersionManager: "gateway-runtime-node-version-manager",
   gatewayRuntimeNodeSystemMissing: "gateway-runtime-node-system-missing",
   launchdKeepAlive: "launchd-keep-alive",
@@ -46,9 +45,7 @@ export const SERVICE_AUDIT_CODES = {
 
 export function needsNodeRuntimeMigration(issues: ServiceConfigIssue[]): boolean {
   return issues.some(
-    (issue) =>
-      issue.code === SERVICE_AUDIT_CODES.gatewayRuntimeBun ||
-      issue.code === SERVICE_AUDIT_CODES.gatewayRuntimeNodeVersionManager,
+    (issue) => issue.code === SERVICE_AUDIT_CODES.gatewayRuntimeNodeVersionManager,
   );
 }
 
@@ -303,12 +300,6 @@ async function auditGatewayRuntime(
   }
 
   if (isBunRuntime(execPath)) {
-    issues.push({
-      code: SERVICE_AUDIT_CODES.gatewayRuntimeBun,
-      message: "Gateway service uses Bun; Bun is incompatible with WhatsApp + Telegram channels.",
-      detail: execPath,
-      level: "recommended",
-    });
     return;
   }
 
