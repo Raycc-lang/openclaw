@@ -1,9 +1,6 @@
 import type { OpenClawConfig } from "../../config/config.js";
 import type { DiscordConfig } from "../../config/types.js";
-import type {
-  GroupToolPolicyBySenderConfig,
-  GroupToolPolicyConfig,
-} from "../../config/types.tools.js";
+import type { GroupToolPolicyConfig } from "../../config/types.tools.js";
 import {
   resolveChannelGroupRequireMention,
   resolveChannelGroupToolsPolicy,

@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SandboxContext, SandboxWorkspaceInfo } from "./types.js";
-import { DEFAULT_BROWSER_EVALUATE_ENABLED } from "../../browser/constants.js";
 import { defaultRuntime } from "../../runtime.js";
 import { resolveUserPath } from "../../utils.js";
 import { syncSkillsToWorkspace } from "../skills.js";
@@ -13,6 +12,9 @@ import { maybePruneSandboxes } from "./prune.js";
 import { resolveSandboxRuntimeStatus } from "./runtime-status.js";
 import { resolveSandboxScopeKey, resolveSandboxWorkspaceDir } from "./shared.js";
 import { ensureSandboxWorkspace } from "./workspace.js";
+
+// Browser functionality removed - default to false
+const DEFAULT_BROWSER_EVALUATE_ENABLED = false;
 
 export async function resolveSandboxContext(params: {
   config?: OpenClawConfig;

@@ -413,6 +413,22 @@ export function createImageTool(options?: {
 
       const media = isDataUrl
         ? decodeDataUrl(resolvedImage)
+        : await (async () => {
+            const filePath = resolvedPath ?? resolvedImage;
+            const buffer = await fs.readFile(filePath);
+            const ext = path.extname(filePath).toLowerCase();
+            const mimeType =
+              ext === ".png"
+                ? "image/png"
+                : ext === ".jpg" || ext === ".jpeg"
+                  ? "image/jpeg"
+                  : ext === ".gif"
+                    ? "image/gif"
+                    : ext === ".webp"
+                      ? "image/webp"
+                      : "image/png";
+            return { buffer, mimeType, kind: "image" as const };
+          })();
       if (media.kind !== "image") {
         throw new Error(`Unsupported media type: ${media.kind}`);
       }
