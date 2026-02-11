@@ -89,9 +89,9 @@
 
 ## ⏸️ PHASE 2: BUN MIGRATION (PENDING - HIGH PRIORITY)
 
-**Estimated Time**: 5-7 days
 **Status**: Not started
 **Goal**: Migrate from Node.js APIs to Bun APIs for performance
+**See**: [PHASE2_WORKFLOW.md](PHASE2_WORKFLOW.md) for complete step-by-step guide
 
 ### 2.1 Audit Dependencies
 
@@ -324,7 +324,6 @@
 
 ## ⏸️ PHASE 3: CONFIG SIMPLIFICATION (PENDING)
 
-**Estimated Time**: 2-3 days
 **Status**: Not started
 **Goal**: Simplify configuration to .env + minimal config file
 
@@ -399,7 +398,6 @@
 
 ## ⏸️ PHASE 4: TESTING & OPTIMIZATION (PENDING)
 
-**Estimated Time**: 5-7 days
 **Status**: Not started
 **Goal**: Comprehensive testing and optimization for 1GB VPS
 
@@ -758,25 +756,27 @@
 
 **Completed**: Phase 1 (Channel removal, import cleanup, version management)
 
-**Next**: Phase 2 - Bun Migration (5-7 days estimated)
+**Next**: Phase 2 - Bun Migration
 
-- This is the major performance work
+**What Phase 2 involves**:
+
 - Migrate WebSockets, file I/O, SQLite to Bun APIs
 - Target: <1s startup, <300MB memory
+- See [PHASE2_WORKFLOW.md](PHASE2_WORKFLOW.md) for step-by-step guide
 
-**Total Time**:
+**Implementation Phases**:
 
-- Phase 1: ~15 hours (DONE)
-- Phase 2: ~5-7 days (PENDING)
-- Phase 3: ~2-3 days (PENDING)
-- Phase 4: ~5-7 days (PENDING)
-- **Total**: ~3-4 weeks
+- Phase 1: Channel removal and cleanup (DONE)
+- Phase 2: Bun migration (PENDING - next major work)
+- Phase 3: Config simplification (PENDING)
+- Phase 4: Testing & optimization (PENDING)
 
 ---
 
 **Quick Reference**:
 
 - [START_HERE.md](START_HERE.md) - Current status overview
-- [FORK_PLAN.md](FORK_PLAN.md) - Complete migration plan
+- [PHASE2_WORKFLOW.md](PHASE2_WORKFLOW.md) - Phase 2 step-by-step guide
 - [UPDATE_WORKFLOW.md](UPDATE_WORKFLOW.md) - How to update from upstream
 - [IMPORT_AUDIT.md](IMPORT_AUDIT.md) - Phase 1 cleanup history
+- [FORK_PLAN.md](FORK_PLAN.md) - Complete migration plan
