@@ -11,10 +11,6 @@ import {
   type RoutePeerKind,
 } from "../../routing/resolve-route.js";
 import { resolveThreadSessionKeys } from "../../routing/session-key.js";
-import {
-  resolveSignalPeerId,
-  resolveSignalRecipient,
-  resolveSignalSender,
 
 export type OutboundSessionRoute = {
   sessionKey: string;
