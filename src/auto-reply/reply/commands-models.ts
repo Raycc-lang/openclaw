@@ -16,7 +16,6 @@ import {
   calculateTotalPages,
   getModelsPageSize,
   type ProviderInfo,
-} from "../../telegram/model-buttons.js";
 
 const PAGE_SIZE_DEFAULT = 20;
 const PAGE_SIZE_MAX = 100;

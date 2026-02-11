@@ -18,7 +18,6 @@ import {
   handleA2uiHttpRequest,
 } from "../canvas-host/a2ui.js";
 import { loadConfig } from "../config/config.js";
-import { handleSlackHttpRequest } from "../slack/http/index.js";
 import { authorizeGatewayConnect, isLocalDirectRequest, type ResolvedGatewayAuth } from "./auth.js";
 import {
   handleControlUiAvatarRequest,
@@ -328,7 +327,6 @@ export function createGatewayHttpServer(opts: {
       ) {
         return;
       }
-      if (await handleSlackHttpRequest(req, res)) {
         return;
       }
       if (handlePluginRequest && (await handlePluginRequest(req, res))) {

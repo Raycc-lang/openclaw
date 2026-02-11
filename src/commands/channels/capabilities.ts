@@ -6,7 +6,6 @@ import { fetchChannelPermissionsDiscord } from "../../discord/send.js";
 import { parseDiscordTarget } from "../../discord/targets.js";
 import { danger } from "../../globals.js";
 import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
-import { fetchSlackScopes, type SlackScopesResult } from "../../slack/scopes.js";
 import { theme } from "../../terminal/theme.js";
 import { formatChannelAccountLabel, requireValidConfig } from "./shared.js";
 
@@ -47,7 +46,6 @@ type ChannelCapabilitiesReport = {
   probe?: unknown;
   slackScopes?: Array<{
     tokenType: "bot" | "user";
-    result: SlackScopesResult;
   }>;
   target?: DiscordTargetSummary;
   channelPermissions?: DiscordPermissionsReport;
@@ -388,7 +386,6 @@ async function resolveChannelReports(params: {
       if (botToken) {
         scopeReports.push({
           tokenType: "bot",
-          result: await fetchSlackScopes(botToken, timeoutMs),
         });
       } else {
         scopeReports.push({
@@ -399,7 +396,6 @@ async function resolveChannelReports(params: {
       if (userToken) {
         scopeReports.push({
           tokenType: "user",
-          result: await fetchSlackScopes(userToken, timeoutMs),
         });
       }
       slackScopes = scopeReports;

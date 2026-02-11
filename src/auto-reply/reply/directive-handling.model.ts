@@ -9,7 +9,6 @@ import {
   resolveConfiguredModelRef,
   resolveModelRefFromString,
 } from "../../agents/model-selection.js";
-import { buildBrowseProvidersButton } from "../../telegram/model-buttons.js";
 import { shortenHomePath } from "../../utils.js";
 import { resolveModelsCommandReply } from "./commands-models.js";
 import {
@@ -218,7 +217,6 @@ export async function maybeHandleModelDirectiveInfo(params: {
     const isTelegram = params.surface === "telegram";
 
     if (isTelegram) {
-      const buttons = buildBrowseProvidersButton();
       return {
         text: [
           `Current: ${current}`,

@@ -9,7 +9,6 @@ import {
   listChatChannels,
   normalizeChatChannelId,
 } from "../channels/registry.js";
-import { hasAnyWhatsAppAuth } from "../web/accounts.js";
 
 type PluginEnableChange = {
   pluginId: string;
@@ -165,7 +164,6 @@ function isIMessageConfigured(cfg: OpenClawConfig): boolean {
 }
 
 function isWhatsAppConfigured(cfg: OpenClawConfig): boolean {
-  if (hasAnyWhatsAppAuth(cfg)) {
     return true;
   }
   const entry = resolveChannelConfig(cfg, "whatsapp");

@@ -41,7 +41,6 @@ import {
 } from "../../pairing/pairing-store.js";
 import { resolveAgentRoute } from "../../routing/resolve-route.js";
 import { buildUntrustedChannelMetadata } from "../../security/channel-metadata.js";
-import { loadWebMedia } from "../../web/media.js";
 import { chunkDiscordTextWithMode } from "../chunk.js";
 import {
   allowListMatches,
@@ -889,7 +888,6 @@ async function deliverDiscordInteractionReply(params: {
   if (mediaList.length > 0) {
     const media = await Promise.all(
       mediaList.map(async (url) => {
-        const loaded = await loadWebMedia(url);
         return {
           name: loaded.fileName ?? "upload",
           data: loaded.buffer,

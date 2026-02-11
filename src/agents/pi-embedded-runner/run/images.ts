@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractTextFromMessage } from "../../../tui/tui-formatters.js";
 import { resolveUserPath } from "../../../utils.js";
-import { loadWebMedia } from "../../../web/media.js";
 import { assertSandboxPath } from "../../sandbox-paths.js";
 import { sanitizeImageBlocks } from "../../tool-images.js";
 import { log } from "../logger.js";
@@ -129,7 +128,6 @@ export function detectImageReferences(prompt: string): DetectedImageRef[] {
 
   // Remote HTTP(S) URLs are intentionally ignored. Native image injection is local-only.
 
-  // Pattern for file:// URLs - treat as paths since loadWebMedia handles them
   const fileUrlPattern = /file:\/\/[^\s<>"'`\]]+\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|heif)/gi;
   while ((match = fileUrlPattern.exec(prompt)) !== null) {
     const raw = match[0];
@@ -228,15 +226,11 @@ export async function loadImageFromRef(
       }
     }
 
-    // loadWebMedia handles local file paths (including file:// URLs)
-    const media = await loadWebMedia(targetPath, options?.maxBytes);
-
     if (media.kind !== "image") {
       log.debug(`Native image: not an image file: ${targetPath} (got ${media.kind})`);
       return null;
     }
 
-    // EXIF orientation is already normalized by loadWebMedia -> resizeToJpeg
     // Default to JPEG since optimization converts images to JPEG format
     const mimeType = media.contentType ?? "image/jpeg";
     const data = media.buffer.toString("base64");

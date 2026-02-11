@@ -7,7 +7,6 @@ import type { RetryConfig } from "../infra/retry.js";
 import { loadConfig } from "../config/config.js";
 import { createDiscordRetryRunner, type RetryRunner } from "../infra/retry-policy.js";
 import { normalizePollDurationHours, normalizePollInput, type PollInput } from "../polls.js";
-import { loadWebMedia } from "../web/media.js";
 import { resolveDiscordAccount } from "./accounts.js";
 import { chunkDiscordTextWithMode } from "./chunk.js";
 import { fetchChannelPermissionsDiscord, isThreadChannelType } from "./send.permissions.js";
@@ -347,7 +346,6 @@ async function sendDiscordMedia(
   embeds?: unknown[],
   chunkMode?: ChunkMode,
 ) {
-  const media = await loadWebMedia(mediaUrl);
   const chunks = text
     ? chunkDiscordTextWithMode(text, {
         maxChars: DISCORD_TEXT_LIMIT,
