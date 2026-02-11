@@ -13,7 +13,6 @@ import {
 } from "../agents/sandbox.js";
 import { loadWorkspaceSkillEntries } from "../agents/skills.js";
 import { resolveToolProfilePolicy } from "../agents/tool-policy.js";
-import { resolveBrowserConfig } from "../browser/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { MANIFEST_KEY } from "../compat/legacy-names.js";
 import { resolveNativeSkillsEnabled } from "../config/commands.js";
@@ -487,11 +486,8 @@ function isWebFetchEnabled(cfg: OpenClawConfig): boolean {
 }
 
 function isBrowserEnabled(cfg: OpenClawConfig): boolean {
-  try {
-    return resolveBrowserConfig(cfg.browser, cfg).enabled;
-  } catch {
-    return true;
-  }
+  // Browser functionality removed in miniAgent
+  return false;
 }
 
 export function collectSmallModelRiskFindings(params: {

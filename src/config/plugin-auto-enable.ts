@@ -164,13 +164,8 @@ function isIMessageConfigured(cfg: OpenClawConfig): boolean {
 }
 
 function isWhatsAppConfigured(cfg: OpenClawConfig): boolean {
-    return true;
-  }
-  const entry = resolveChannelConfig(cfg, "whatsapp");
-  if (!entry) {
-    return false;
-  }
-  return recordHasKeys(entry);
+  // WhatsApp removed in miniAgent
+  return false;
 }
 
 function isGenericChannelConfigured(cfg: OpenClawConfig, channelId: string): boolean {

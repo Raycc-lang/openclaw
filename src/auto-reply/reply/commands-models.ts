@@ -10,12 +10,6 @@ import {
   resolveConfiguredModelRef,
   resolveModelRefFromString,
 } from "../../agents/model-selection.js";
-import {
-  buildModelsKeyboard,
-  buildProviderKeyboard,
-  calculateTotalPages,
-  getModelsPageSize,
-  type ProviderInfo,
 
 const PAGE_SIZE_DEFAULT = 20;
 const PAGE_SIZE_MAX = 100;

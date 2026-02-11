@@ -379,8 +379,6 @@ export function createImageTool(options?: {
           : DEFAULT_PROMPT;
       const modelOverride =
         typeof record.model === "string" && record.model.trim() ? record.model.trim() : undefined;
-      const maxBytesMb = typeof record.maxBytesMb === "number" ? record.maxBytesMb : undefined;
-      const maxBytes = pickMaxBytes(options?.config, maxBytesMb);
 
       const sandboxRoot = options?.sandboxRoot?.trim();
       const isUrl = isHttpUrl;

@@ -66,20 +66,6 @@ import { sendMessageDiscord, sendPollDiscord } from "../../discord/send.js";
 import { shouldLogVerbose } from "../../globals.js";
 import { getChannelActivity, recordChannelActivity } from "../../infra/channel-activity.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
-import {
-  listLineAccountIds,
-  normalizeAccountId as normalizeLineAccountId,
-  resolveDefaultLineAccountId,
-  resolveLineAccount,
-import {
-  createQuickReplyItems,
-  pushMessageLine,
-  pushMessagesLine,
-  pushFlexMessage,
-  pushTemplateMessage,
-  pushLocationMessage,
-  pushTextMessageWithQuickReplies,
-  sendMessageLine,
 import { getChildLogger } from "../../logging.js";
 import { normalizeLogLevel } from "../../logging/levels.js";
 import { convertMarkdownTables } from "../../markdown/tables.js";
@@ -96,19 +82,7 @@ import {
 } from "../../pairing/pairing-store.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
 import { resolveAgentRoute } from "../../routing/resolve-route.js";
-import {
-  listSlackDirectoryGroupsLive,
-  listSlackDirectoryPeersLive,
-import {
-  auditTelegramGroupMembership,
-  collectTelegramUnmentionedGroupIds,
 import { textToSpeechTelephony } from "../../tts/tts.js";
-import {
-  getWebAuthAgeMs,
-  logoutWeb,
-  logWebSelfId,
-  readWebSelfId,
-  webAuthExists,
 import { formatNativeDependencyHint } from "./native-deps.js";
 
 let cachedVersion: string | null = null;
