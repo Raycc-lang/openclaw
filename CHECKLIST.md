@@ -90,10 +90,16 @@
 ## ⏸️ PHASE 2: BUN MIGRATION (PENDING - HIGH PRIORITY)
 
 **Status**: Not started
-**Goal**: Migrate from Node.js APIs to Bun APIs for performance
+**Goal**: Conservative optimization - migrate hot paths to Bun native APIs
+**Approach**: Autonomy stability over API purity
 **See**: [PHASE2_WORKFLOW.md](PHASE2_WORKFLOW.md) for complete step-by-step guide
 
-### 2.1 Audit Dependencies
+### Architectural Principles
+
+- [ ] **Define runtime boundary** (Gateway=Bun, UI=optional Node)
+- [ ] **Document autonomy SLOs** (cron <60s skew, heartbeat ±10%, webhook <1s)
+- [ ] **Create BUN_COMPATIBILITY.md** (living document with rationale)
+- [ ] **Establish baseline metrics** (startup, memory, SLOs)
 
 - [ ] **Run compatibility audit**
 
@@ -206,9 +212,16 @@
   - [ ] `src/cron/service/store.ts`
   - [ ] Others as identified
 
-**Priority 3: SQLite Database** ⭐
+**Priority 3: SQLite Database** ⭐ **OPTIONAL**
 
-- [ ] **Check current SQLite usage**
+- [ ] **Decision tree: Should we migrate?**
+  - [ ] Test if Bun.sqlite supports FTS (if you use it)
+  - [ ] Test if Bun.sqlite supports extensions (if you use any)
+  - [ ] Run performance benchmark (Bun.sqlite vs better-sqlite3)
+  - [ ] **Decision**: Migrate ONLY if features work AND performance improves
+  - [ ] **Default**: Keep better-sqlite3 (works perfectly with Bun)
+
+- [ ] **Check current SQLite usage** (if migrating)
 
   ```bash
   grep -r "sqlite\|Database" src/memory/ --include="*.ts"
@@ -280,6 +293,14 @@
   - [ ] May need Node.js if terminal rendering breaks
 
 ### 2.4 Performance Testing
+
+**IMPORTANT**: Test autonomy SLOs after each migration slice
+
+- [ ] **Autonomy SLO verification**
+  - [ ] Cron skew: 95% of jobs within 60s of scheduled time
+  - [ ] Heartbeat drift: Average ±10% of configured interval
+  - [ ] Webhook latency: p95 <1s under normal load
+  - [ ] Gateway uptime: No crashes during 24hr test (recommended)
 
 - [ ] **Benchmark startup time**
 

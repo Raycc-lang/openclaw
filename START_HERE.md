@@ -159,15 +159,16 @@ bun src/index.ts gateway
 
 ### Implementation Guides
 
-**PHASE2_WORKFLOW.md** - Complete workflow for:
+**PHASE2_WORKFLOW.md** - Conservative, autonomy-first Bun migration:
 
-- Dependency compatibility audit
-- WebSocket migration to Bun.serve
-- File I/O migration to Bun.file
-- SQLite migration to Bun.sqlite
-- HTTP server migration
-- Performance benchmarking
-- Testing and validation
+- Runtime boundary definition (Gateway=Bun, UI=optional Node)
+- Autonomy SLOs (cron, heartbeat, webhooks)
+- WebSocket migration (Priority 1 - hot path)
+- File I/O migration (Priority 2 - hot paths only)
+- SQLite evaluation (Optional, with decision tree)
+- HTTP/Webhooks migration (Priority 4)
+- Performance benchmarking and verification
+- Stability testing (24hr recommended)
 
 **UPDATE_WORKFLOW.md** - Maintenance guide for:
 
@@ -410,21 +411,21 @@ This is normal if your config file is from newer OpenClaw. Version 2026.2.10-min
 
 ## 🚀 NEXT STEPS
 
-### Phase 2: Bun Migration (Major Performance Work)
+### Phase 2: Bun Migration (Conservative Optimization)
 
 **Read**: [PHASE2_WORKFLOW.md](PHASE2_WORKFLOW.md) for complete step-by-step guide
 
-**Overview**:
+**Key Principle**: The code already runs on Bun. Phase 2 optimizes hot paths only, prioritizing autonomy stability over API purity.
 
-1. Audit dependency compatibility with Bun
-2. Migrate WebSocket server to Bun.serve (highest priority)
-3. Migrate file I/O to Bun.file API
-4. Migrate SQLite to Bun.sqlite
-5. Migrate HTTP webhooks to Bun.serve
-6. Benchmark performance improvements
-7. Integration testing
+**Architectural Approach**:
 
-**Goal**: <1s startup, <300MB memory baseline
+1. **Runtime Boundary**: Gateway + autonomy = Bun native; UI may stay Node
+2. **Autonomy First**: Preserve cron timing, heartbeat reliability, webhook latency
+3. **Conservative Migration**: Hot paths only (WebSocket > File I/O > HTTP)
+4. **SQLite Optional**: Test first, keep better-sqlite3 if Bun.sqlite lacks features
+5. **Measure Everything**: Baseline → migrate → verify SLOs
+
+**Goal**: <1s startup, <300MB memory, 100% autonomy reliability maintained
 
 ### For Development (Current Phase 1 State)
 
