@@ -327,8 +327,6 @@ export function createGatewayHttpServer(opts: {
       ) {
         return;
       }
-        return;
-      }
       if (handlePluginRequest && (await handlePluginRequest(req, res))) {
         return;
       }

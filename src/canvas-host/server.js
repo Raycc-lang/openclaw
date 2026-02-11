@@ -1,9 +1,4 @@
-// Canvas-host server functionality removed in miniAgent - stub for type compatibility
-export type CanvasHostHandler = {
-  rootDir: string;
-  handleHttpRequest: (req: unknown, res: unknown) => Promise<boolean>;
-};
-
+// Canvas-host server functionality removed in miniAgent - stub for compatibility
 export async function createCanvasHostHandler() {
   return {
     rootDir: "",
