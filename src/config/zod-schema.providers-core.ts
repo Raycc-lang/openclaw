@@ -16,6 +16,11 @@ import {
   requireOpenAllowFrom,
 } from "./zod-schema.core.js";
 
+// Stubs for removed Telegram functions (channel removed in miniAgent)
+const normalizeTelegramCommandName = (cmd: string) => cmd.trim().toLowerCase();
+const normalizeTelegramCommandDescription = (desc: string) => desc.trim();
+const resolveTelegramCustomCommands = () => ({ issues: [] });
+
 const ToolPolicyBySenderSchema = z.record(z.string(), ToolPolicySchema).optional();
 
 const TelegramInlineButtonsScopeSchema = z.enum(["off", "dm", "group", "all", "allowlist"]);
