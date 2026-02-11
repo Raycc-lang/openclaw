@@ -19,15 +19,12 @@ import {
 import { parseReplyDirectives } from "../../auto-reply/reply/reply-directives.js";
 import { dispatchChannelMessageAction } from "../../channels/plugins/message-actions.js";
 import { extensionForMime } from "../../media/mime.js";
-import { parseSlackTarget } from "../../slack/targets.js";
-import { parseTelegramTarget } from "../../telegram/targets.js";
 import {
   isDeliverableMessageChannel,
   normalizeMessageChannel,
   type GatewayClientMode,
   type GatewayClientName,
 } from "../../utils/message-channel.js";
-import { loadWebMedia } from "../../web/media.js";
 import {
   listConfiguredMessageChannels,
   resolveMessageChannelSelection,
@@ -232,7 +229,6 @@ function resolveSlackAutoThreadId(params: {
   if (context.replyToMode !== "all" && context.replyToMode !== "first") {
     return undefined;
   }
-  const parsedTarget = parseSlackTarget(params.to, { defaultKind: "channel" });
   if (!parsedTarget || parsedTarget.kind !== "channel") {
     return undefined;
   }
@@ -263,11 +259,7 @@ function resolveTelegramAutoThreadId(params: {
   if (!context?.currentThreadTs || !context.currentChannelId) {
     return undefined;
   }
-  // Use parseTelegramTarget to extract canonical chatId from both sides,
-  // mirroring how Slack uses parseSlackTarget. This handles format variations
   // like `telegram:group:123:topic:456` vs `telegram:123`.
-  const parsedTo = parseTelegramTarget(params.to);
-  const parsedChannel = parseTelegramTarget(context.currentChannelId);
   if (parsedTo.chatId.toLowerCase() !== parsedChannel.chatId.toLowerCase()) {
     return undefined;
   }
@@ -442,7 +434,6 @@ async function hydrateSetGroupIconParams(params: {
       channel: params.channel,
       accountId: params.accountId,
     });
-    const media = await loadWebMedia(mediaSource, maxBytes);
     params.args.buffer = media.buffer.toString("base64");
     if (!contentTypeParam && media.contentType) {
       params.args.contentType = media.contentType;
@@ -506,7 +497,6 @@ async function hydrateSendAttachmentParams(params: {
       channel: params.channel,
       accountId: params.accountId,
     });
-    const media = await loadWebMedia(mediaSource, maxBytes);
     params.args.buffer = media.buffer.toString("base64");
     if (!contentTypeParam && media.contentType) {
       params.args.contentType = media.contentType;

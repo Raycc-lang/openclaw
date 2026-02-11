@@ -5,7 +5,6 @@ import type { ResolvedMessagingTarget } from "./target-resolver.js";
 import { getChannelPlugin } from "../../channels/plugins/index.js";
 import { recordSessionMetaFromInbound, resolveStorePath } from "../../config/sessions.js";
 import { parseDiscordTarget } from "../../discord/targets.js";
-import { parseIMessageTarget, normalizeIMessageHandle } from "../../imessage/targets.js";
 import {
   buildAgentSessionKey,
   type RoutePeer,
@@ -16,15 +15,6 @@ import {
   resolveSignalPeerId,
   resolveSignalRecipient,
   resolveSignalSender,
-} from "../../signal/identity.js";
-import { resolveSlackAccount } from "../../slack/accounts.js";
-import { createSlackWebClient } from "../../slack/client.js";
-import { normalizeAllowListLower } from "../../slack/monitor/allow-list.js";
-import { parseSlackTarget } from "../../slack/targets.js";
-import { buildTelegramGroupPeerId } from "../../telegram/bot/helpers.js";
-import { resolveTelegramTargetChatType } from "../../telegram/inline-buttons.js";
-import { parseTelegramTarget } from "../../telegram/targets.js";
-import { isWhatsAppGroupJid, normalizeWhatsAppTarget } from "../../whatsapp/normalize.js";
 
 export type OutboundSessionRoute = {
   sessionKey: string;
@@ -147,8 +137,6 @@ async function resolveSlackChannelType(params: {
     return cached;
   }
 
-  const account = resolveSlackAccount({ cfg: params.cfg, accountId: params.accountId });
-  const groupChannels = normalizeAllowListLower(account.dm?.groupChannels);
   const channelIdLower = channelId.toLowerCase();
   if (
     groupChannels.includes(channelIdLower) ||
@@ -185,7 +173,6 @@ async function resolveSlackChannelType(params: {
   }
 
   try {
-    const client = createSlackWebClient(token);
     const info = await client.conversations.info({ channel: channelId });
     const channel = info.channel as { is_im?: boolean; is_mpim?: boolean } | undefined;
     const type = channel?.is_im ? "dm" : channel?.is_mpim ? "group" : "channel";
@@ -200,7 +187,6 @@ async function resolveSlackChannelType(params: {
 async function resolveSlackSession(
   params: ResolveOutboundSessionRouteParams,
 ): Promise<OutboundSessionRoute | null> {
-  const parsed = parseSlackTarget(params.target, { defaultKind: "channel" });
   if (!parsed) {
     return null;
   }
@@ -293,7 +279,6 @@ function resolveDiscordSession(
 function resolveTelegramSession(
   params: ResolveOutboundSessionRouteParams,
 ): OutboundSessionRoute | null {
-  const parsed = parseTelegramTarget(params.target);
   const chatId = parsed.chatId.trim();
   if (!chatId) {
     return null;
@@ -303,14 +288,12 @@ function resolveTelegramSession(
   const resolvedThreadId =
     parsedThreadId ?? (fallbackThreadId ? Number.parseInt(fallbackThreadId, 10) : undefined);
   // Telegram topics are encoded in the peer id (chatId:topic:<id>).
-  const chatType = resolveTelegramTargetChatType(params.target);
   // If the target is a username and we lack a resolvedTarget, default to DM to avoid group keys.
   const isGroup =
     chatType === "group" ||
     (chatType === "unknown" &&
       params.resolvedTarget?.kind &&
       params.resolvedTarget.kind !== "user");
-  const peerId = isGroup ? buildTelegramGroupPeerId(chatId, resolvedThreadId) : chatId;
   const peer: RoutePeer = {
     kind: isGroup ? "group" : "dm",
     id: peerId,
@@ -336,11 +319,9 @@ function resolveTelegramSession(
 function resolveWhatsAppSession(
   params: ResolveOutboundSessionRouteParams,
 ): OutboundSessionRoute | null {
-  const normalized = normalizeWhatsAppTarget(params.target);
   if (!normalized) {
     return null;
   }
-  const isGroup = isWhatsAppGroupJid(normalized);
   const peer: RoutePeer = {
     kind: isGroup ? "group" : "dm",
     id: normalized,
@@ -430,9 +411,7 @@ function resolveSignalSession(
 function resolveIMessageSession(
   params: ResolveOutboundSessionRouteParams,
 ): OutboundSessionRoute | null {
-  const parsed = parseIMessageTarget(params.target);
   if (parsed.kind === "handle") {
-    const handle = normalizeIMessageHandle(parsed.to);
     if (!handle) {
       return null;
     }
