@@ -1,5 +1,10 @@
 import fs from "node:fs/promises";
 
+/**
+ * NOTE: fs import retained only for potential future use.
+ * File I/O migrated to Bun native operations for performance.
+ */
+
 type SessionHeaderEntry = { type: "session"; id?: string; cwd?: string };
 type SessionMessageEntry = { type: "message"; message?: { role?: string } };
 
@@ -43,7 +48,8 @@ export async function prepareSessionManagerForRun(params: {
 
   if (params.hadSessionFile && header && !hasAssistant) {
     // Reset file so the first assistant flush includes header+user+assistant in order.
-    await fs.writeFile(params.sessionFile, "", "utf-8");
+    // Use Bun.write for performance
+    await Bun.write(params.sessionFile, "");
     sm.fileEntries = [header];
     sm.byId?.clear?.();
     sm.labelsById?.clear?.();

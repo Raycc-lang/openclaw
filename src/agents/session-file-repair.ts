@@ -27,7 +27,9 @@ export async function repairSessionFileIfNeeded(params: {
 
   let content: string;
   try {
-    content = await fs.readFile(sessionFile, "utf-8");
+    // Use Bun.file for fast file reading
+    const file = Bun.file(sessionFile);
+    content = await file.text();
   } catch (err) {
     const code = (err as { code?: unknown } | undefined)?.code;
     if (code === "ENOENT") {
@@ -74,11 +76,12 @@ export async function repairSessionFileIfNeeded(params: {
   const tmpPath = `${sessionFile}.repair-${process.pid}-${Date.now()}.tmp`;
   try {
     const stat = await fs.stat(sessionFile).catch(() => null);
-    await fs.writeFile(backupPath, content, "utf-8");
+    // Use Bun.write for fast file writing
+    await Bun.write(backupPath, content);
     if (stat) {
       await fs.chmod(backupPath, stat.mode);
     }
-    await fs.writeFile(tmpPath, cleaned, "utf-8");
+    await Bun.write(tmpPath, cleaned);
     if (stat) {
       await fs.chmod(tmpPath, stat.mode);
     }

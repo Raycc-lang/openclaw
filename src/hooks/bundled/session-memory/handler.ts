@@ -21,13 +21,16 @@ const log = createSubsystemLogger("hooks/session-memory");
 
 /**
  * Read recent messages from session file for slug generation
+ * Uses Bun native file I/O for performance
  */
 async function getRecentSessionContent(
   sessionFilePath: string,
   messageCount: number = 15,
 ): Promise<string | null> {
   try {
-    const content = await fs.readFile(sessionFilePath, "utf-8");
+    // Use Bun.file for fast file reading
+    const file = Bun.file(sessionFilePath);
+    const content = await file.text();
     const lines = content.trim().split("\n");
 
     // Parse JSONL and extract user/assistant messages first
@@ -169,8 +172,8 @@ const saveSessionToMemory: HookHandler = async (event) => {
 
     const entry = entryParts.join("\n");
 
-    // Write to new memory file
-    await fs.writeFile(memoryFilePath, entry, "utf-8");
+    // Write to new memory file using Bun.write for performance
+    await Bun.write(memoryFilePath, entry);
     log.debug("Memory file written successfully");
 
     // Log completion (but don't send user-visible confirmation - it's internal housekeeping)
