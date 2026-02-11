@@ -227,16 +227,42 @@ As we test each dependency, record results here:
 
 ### File I/O (Bun.file)
 
-- **Status**: Not started
-- **Before**: [performance metrics]
-- **After**: [performance metrics]
-- **Tests**: Pending
+- **Status**: ✅ Complete
+- **Before**: 1675ms startup, 308MB memory
+- **After**: 1583ms startup, 310MB memory
+- **Improvement**: 5.5% faster startup
+- **Tests**: ✅ Passing - Gateway functional
+
+**Files migrated**:
+
+- src/hooks/bundled/session-memory/handler.ts
+- src/agents/session-file-repair.ts
+- src/agents/pi-embedded-runner/session-manager-init.ts
 
 ### SQLite
 
-- **Status**: Not started
-- **Decision**: Pending evaluation
-- **Notes**: Will test features first
+- **Status**: ✅ Evaluated - Keeping node:sqlite
+- **Decision**: KEEP node:sqlite (DatabaseSync)
+- **Rationale**:
+  - Bun.sqlite has full feature parity (FTS5 ✅, extensions ✅, vec0 ✅)
+  - Performance is excellent (11.93ms for 10k inserts with transaction)
+  - However, node:sqlite already works perfectly under Bun via createRequire()
+  - API differences would require changes across multiple files
+  - Conservative approach: Don't migrate what's not broken
+    -No compelling performance benefit to justify migration risk
+
+**Test Results**:
+
+- Bun.sqlite FTS5: ✅ Working
+- Bun.sqlite extension loading: ✅ Working (sqlite-vec loaded successfully)
+- Bun.sqlite vector search: ✅ Working (vec0 table created)
+- Performance: 23.58ms (no transaction), 11.93ms (with transaction) for 10k inserts
+
+**Notes**:
+
+- Current implementation uses `requireNodeSqlite()` wrapper with createRequire()
+- This works seamlessly under Bun
+- Future consideration: Could migrate to Bun.sqlite if API standardization is desired
 
 ### HTTP/Webhooks (Bun.serve)
 
