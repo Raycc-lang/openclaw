@@ -1,7 +1,7 @@
 {
-  "name": "openclaw",
-  "version": "2026.2.6-3",
-  "description": "Multi-channel AI gateway with extensible messaging integrations",
+  "name": "miniagent",
+  "version": "2026.2.10-miniAgent",
+  "description": "Lightweight Discord-only AI agent fork of OpenClaw for 1GB RAM VPS",
   "keywords": [],
   "license": "MIT",
   "author": "",
