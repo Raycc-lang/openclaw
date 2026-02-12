@@ -1,18 +1,18 @@
 # miniAgent Implementation Checklist
 
 **Project**: Discord-only OpenClaw fork for 1GB RAM VPS
-**Status**: Phase 1 Complete, Ready for Phase 2 (Bun Migration)
+**Status**: Phase 2 Complete, Ready for Phase 3 (1GB RAM Optimization)
 **Version**: 2026.2.10-miniAgent
-**Last Updated**: 2026-02-11
+**Last Updated**: 2026-02-12
 
 ---
 
 ## PROGRESS SUMMARY
 
 - ✅ **Phase 1: Fork & Channel Removal** - COMPLETE
-- ⏸️ **Phase 2: Bun Migration** - PENDING (Next major work)
-- ⏸️ **Phase 3: Config Simplification** - PENDING
-- ⏸️ **Phase 4: Testing & Optimization** - PENDING
+- ✅ **Phase 2: Bun Migration** - COMPLETE (Conservative approach)
+- ⏸️ **Phase 3: 1GB RAM Optimization** - NEXT (Memory & concurrency tuning)
+- ⏸️ **Phase 4: Testing & Production** - PENDING
 
 ---
 
@@ -87,19 +87,207 @@
 
 ---
 
-## ⏸️ PHASE 2: BUN MIGRATION (PENDING - HIGH PRIORITY)
+## ✅ PHASE 2: BUN MIGRATION (COMPLETE)
+
+**Status**: ✅ Complete (Conservative approach)
+**Goal**: Migrate hot paths to Bun native APIs without breaking autonomy
+**Results**: 5.5% startup improvement, streaming optimized, stability maintained
+**See**: [PHASE2_SUMMARY.md](PHASE2_SUMMARY.md) for complete results
+
+### 2.1 Identification & Analysis ✅
+
+- [x] Identified migration targets (File I/O, SQLite, HTTP, WebSocket)
+- [x] Created BUN_COMPATIBILITY.md migration matrix
+- [x] Documented baseline metrics (1675ms startup, 308MB memory)
+- [x] Defined conservative approach principles
+
+### 2.2 File I/O Migration ✅
+
+- [x] Migrated session file operations to Bun.file
+- [x] Migrated memory file operations to Bun.file
+- [x] Updated hooks/bundled/session-memory/handler.ts
+- [x] Updated agents/session-file-repair.ts
+- [x] Updated agents/pi-embedded-runner/session-manager-init.ts
+- [x] Results: 5.5% startup improvement (1675ms → 1583ms)
+
+### 2.3 SQLite Evaluation ✅
+
+- [x] Tested Bun.sqlite features (FTS5, extensions, vector search)
+- [x] Performance benchmarking (transaction mode, bulk inserts)
+- [x] Decision: Keep node:sqlite (works well, migration risky)
+- [x] Documented rationale in PHASE2_SUMMARY.md
+
+### 2.4 HTTP Streaming Migration ✅
+
+- [x] Replaced ServerResponseStub with StreamingServerResponse
+- [x] Implemented Bun ReadableStream for SSE endpoints
+- [x] Added client disconnection support via AbortSignal
+- [x] Created 14 unit tests (all passing)
+- [x] Updated src/gateway/server-bun.ts
+- [x] Results: Eliminated response buffering, true incremental streaming
+
+### 2.5 WebSocket Migration ⏸️
+
+- [ ] Deferred (high complexity, uncertain benefit)
+- [x] Already using Bun.serve for WebSocket (Phase 1 work)
+- [x] Current implementation adequate for 1GB target
+
+### 2.6 Documentation ✅
+
+- [x] Updated BUN_COMPATIBILITY.md with results
+- [x] Updated PHASE2_SUMMARY.md with metrics
+- [x] Committed all changes to git
+
+**Phase 2 Summary**:
+
+- ✅ File I/O migrated (5.5% faster startup)
+- ✅ HTTP Streaming optimized (no buffering)
+- ✅ SQLite evaluated (kept node:sqlite)
+- ✅ Gateway stability maintained
+- ⏸️ WebSocket/HTTP webhooks deferred (low ROI)
+
+---
+
+## ⏸️ PHASE 3: 1GB RAM OPTIMIZATION (NEXT)
 
 **Status**: Not started
-**Goal**: Conservative optimization - migrate hot paths to Bun native APIs
-**Approach**: Autonomy stability over API purity
-**See**: [PHASE2_WORKFLOW.md](PHASE2_WORKFLOW.md) for complete step-by-step guide
+**Goal**: Optimize memory usage and concurrency for 1GB RAM VPS
+**Target**: ~200-250MB idle memory, stable under load
+**Approach**: Aggressive memory management, reduced concurrency, context compaction
 
-### Architectural Principles
+### 3.1 Concurrency Tuning ⏸️
 
-- [ ] **Define runtime boundary** (Gateway=Bun, UI=optional Node)
-- [ ] **Document autonomy SLOs** (cron <60s skew, heartbeat ±10%, webhook <1s)
-- [ ] **Create BUN_COMPATIBILITY.md** (living document with rationale)
-- [ ] **Establish baseline metrics** (startup, memory, SLOs)
+**Problem**: Default concurrency settings designed for 8GB+ servers
+
+- [ ] **Reduce maxConcurrent agents**
+  - [ ] Current: 4 concurrent agents
+  - [ ] Target: 2 concurrent agents (50% reduction)
+  - [ ] Hard-code lower defaults in agent config
+
+- [ ] **Reduce subagent concurrency**
+  - [ ] Current: 8 concurrent subagents
+  - [ ] Target: 4 concurrent subagents (50% reduction)
+  - [ ] Update subagent registry defaults
+
+- [ ] **Add memory pressure detection**
+  - [ ] Monitor RSS memory usage
+  - [ ] Throttle concurrency when memory > 800MB
+  - [ ] Log warnings when approaching 1GB limit
+
+### 3.2 Context Window Management ⏸️
+
+**Problem**: Large context windows consume significant memory
+
+- [ ] **Implement aggressive context compaction**
+  - [ ] Reduce default max context length
+  - [ ] More frequent compaction triggers
+  - [ ] Prune tool results more aggressively
+
+- [ ] **Optimize message history**
+  - [ ] Limit conversation history depth
+  - [ ] Compress old messages to summaries
+  - [ ] Clear tool call intermediates faster
+
+- [ ] **Model-specific limits**
+  - [ ] Use smaller context windows for Sonnet (32k → 16k recommended)
+  - [ ] Configure per-model memory budgets
+  - [ ] Disable streaming for very large responses
+
+### 3.3 Memory Budget Allocation ⏸️
+
+**1GB RAM breakdown (target)**:
+
+- System/OS: ~100MB
+- Node.js/Bun runtime: ~80MB
+- Discord.js + gateway: ~80MB
+- Agent loop (1 active): ~150MB per agent × 2 = 300MB
+- Context/messages: ~100MB buffer
+- SQLite/memory: ~50MB
+- **Total**: ~710MB (leaving 290MB headroom)
+
+Tasks:
+
+- [ ] Profile actual memory usage per component
+- [ ] Set hard limits on agent memory consumption
+- [ ] Implement memory budget enforcement
+
+### 3.4 SQLite Memory Configuration ⏸️
+
+**Problem**: SQLite cache can grow unbounded
+
+- [ ] **Add SQLite memory limits**
+  - [ ] Set `PRAGMA cache_size` to reasonable value (e.g., 2000 pages = 8MB)
+  - [ ] Configure `PRAGMA mmap_size` for memory-mapped I/O limits
+  - [ ] Use `PRAGMA temp_store = MEMORY` cautiously
+
+- [ ] **Optimize queries**
+  - [ ] Add indexes to hot queries
+  - [ ] Use prepared statements (reuse query plans)
+  - [ ] Limit result set sizes
+
+### 3.5 Garbage Collection Tuning ⏸️
+
+**Problem**: Bun's GC may not be tuned for low-memory environments
+
+- [ ] **Configure Bun GC settings**
+  - [ ] Test `BUN_FORCE_GC` environment variable
+  - [ ] Experiment with heap size limits
+  - [ ] Profile GC pauses during agent execution
+
+- [ ] **Code optimization**
+  - [ ] Reduce object allocations in hot paths
+  - [ ] Use object pooling where beneficial
+  - [ ] Clear large buffers explicitly
+
+### 3.6 Discord Integration Optimization ⏸️
+
+**Problem**: discord.js can consume memory with large servers
+
+- [ ] **Minimize cached data**
+  - [ ] Reduce cached messages (current default: 200)
+  - [ ] Disable presence updates if not needed
+  - [ ] Limit cached guild members
+
+- [ ] **Configure intents**
+  - [ ] Use minimal required intents
+  - [ ] Avoid `GUILD_PRESENCES` if possible
+  - [ ] Review `GUILD_MEMBERS` necessity
+
+### 3.7 Monitoring &Alerts ⏸️
+
+- [ ] **Add memory monitoring**
+  - [ ] Log RSS memory every minute
+  - [ ] Alert when memory > 850MB
+  - [ ] Auto-compact sessions at 900MB
+
+- [ ] **Create diagnostics endpoint**
+  - [ ] Expose memory stats via WebSocket
+  - [ ] Show active agent count
+  - [ ] Display context window sizes
+
+### 3.8 Testing Under Load ⏸️
+
+- [ ] **Stress test with 1GB limit**
+  - [ ] Run agent with `--max-old-space-size=1024`
+  - [ ] Simulate multiple concurrent conversations
+  - [ ] Monitor for OOM crashes
+
+- [ ] **Validate production scenarios**
+  - [ ] Multiple Discord channels active
+  - [ ] Large message history
+  - [ ] Long-running agent sessions
+
+**Phase 3 Deliverables**:
+
+- Concurrency defaults tuned for 1GB
+- Context compaction strategy implemented
+- Memory monitoring and alerts
+- Stable operation under 1GB limit
+- Documentation of memory optimization
+
+---
+
+## ⏸️ PHASE 4: CONFIG SIMPLIFICATION (PENDING)
 
 - [ ] **Run compatibility audit**
 
