@@ -2,7 +2,8 @@ node_modules
 **/node_modules/
 .env
 docker-compose.extra.yml
-dist
+/dist/*
+!/dist/control-ui/
 *.bun-build
 pnpm-lock.yaml
 bun.lock
