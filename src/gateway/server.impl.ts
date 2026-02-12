@@ -31,6 +31,7 @@ import { createExecApprovalForwarder } from "../infra/exec-approval-forwarder.js
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner } from "../infra/heartbeat-runner.js";
 import { getMachineDisplayName } from "../infra/machine-name.js";
+import { startMemoryMonitor, stopMemoryMonitor } from "../infra/memory-monitor.js";
 import { ensureOpenClawCliOnPath } from "../infra/path-env.js";
 import { setGatewaySigusr1RestartPolicy } from "../infra/restart.js";
 import {
@@ -223,6 +224,18 @@ export async function startGatewayServer(
   if (diagnosticsEnabled) {
     startDiagnosticHeartbeat();
   }
+
+  // Start memory monitoring for 1GB RAM optimization
+  startMemoryMonitor({
+    checkInterval: 60000, // Check every minute
+    logEvery: 1, // Log every check
+    thresholds: {
+      warning: 850, // Warn at 850MB
+      critical: 900, // GC at 900MB
+      emergency: 950, // Shutdown at 950MB
+    },
+  });
+
   setGatewaySigusr1RestartPolicy({ allowExternal: cfgAtStart.commands?.restart === true });
   initSubagentRegistry();
   const defaultAgentId = resolveDefaultAgentId(cfgAtStart);
@@ -640,6 +653,9 @@ export async function startGatewayServer(
 
   return {
     close: async (opts) => {
+      // Stop memory monitor
+      stopMemoryMonitor();
+
       if (diagnosticsEnabled) {
         stopDiagnosticHeartbeat();
       }
