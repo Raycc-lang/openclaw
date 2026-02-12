@@ -15,8 +15,10 @@ import type { HooksConfigResolved } from "./hooks.js";
 import type { DedupeEntry } from "./server-shared.js";
 import type { GatewayTlsRuntime } from "./server/tls.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
+import { resolveAgentAvatar } from "../agents/identity-avatar.js";
 import { CANVAS_HOST_PATH } from "../canvas-host/a2ui.js";
 import { type CanvasHostHandler, createCanvasHostHandler } from "../canvas-host/server.js";
+import { handleControlUiAvatarRequest, handleControlUiHttpRequest } from "./control-ui.js";
 import { createGatewayBroadcaster } from "./server-broadcast.js";
 import { createGatewayBunServer } from "./server-bun.js";
 import {
@@ -142,6 +144,34 @@ export async function createGatewayRuntimeStateBun(params: {
   const chatAbortControllers = new Map<string, ChatAbortControllerEntry>();
   const toolEventRecipients = createToolEventRecipientRegistry();
 
+  const handleControlUiRequest = async (
+    req: Parameters<typeof handleHooksRequest>[0],
+    res: Parameters<typeof handleHooksRequest>[1],
+  ) => {
+    if (!params.controlUiEnabled) {
+      return false;
+    }
+    const configSnapshot = params.cfg;
+    if (
+      handleControlUiAvatarRequest(req, res, {
+        basePath: params.controlUiBasePath,
+        resolveAvatar: (agentId) => resolveAgentAvatar(configSnapshot, agentId),
+      })
+    ) {
+      return true;
+    }
+    if (
+      handleControlUiHttpRequest(req, res, {
+        basePath: params.controlUiBasePath,
+        config: configSnapshot,
+        root: params.controlUiRoot,
+      })
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   // Create Bun server (NEW: replaces HTTP + WebSocket server creation)
   const bunServer = createGatewayBunServer({
     bindHost: params.bindHost,
@@ -161,7 +191,7 @@ export async function createGatewayRuntimeStateBun(params: {
     extraHandlersRef: params.extraHandlersRef,
     broadcast,
     buildRequestContext: params.buildRequestContext,
-    httpHandlers: [handleHooksRequest, handlePluginRequest],
+    httpHandlers: [handleControlUiRequest, handleHooksRequest, handlePluginRequest],
   });
 
   params.log.info(`gateway listening on http://${params.bindHost}:${params.port}`);
