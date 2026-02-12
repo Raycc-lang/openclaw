@@ -1,5 +1,8 @@
 import type { DaemonInstallOptions } from "./types.js";
-import { buildGatewayInstallPlan } from "../../commands/daemon-install-helpers.js";
+import {
+  buildGatewayInstallPlan,
+  resolveGatewayDevMode,
+} from "../../commands/daemon-install-helpers.js";
 import {
   DEFAULT_GATEWAY_DAEMON_RUNTIME,
   isGatewayDaemonRuntime,
@@ -60,7 +63,13 @@ export async function runDaemonInstall(opts: DaemonInstallOptions) {
     fail("Invalid port");
     return;
   }
-  const runtimeRaw = opts.runtime ? String(opts.runtime) : DEFAULT_GATEWAY_DAEMON_RUNTIME;
+
+  const devMode = resolveGatewayDevMode();
+  const runtimeRaw = opts.runtime
+    ? String(opts.runtime)
+    : devMode && typeof process.execPath === "string" && process.execPath.includes("bun")
+      ? "bun"
+      : DEFAULT_GATEWAY_DAEMON_RUNTIME;
   if (!isGatewayDaemonRuntime(runtimeRaw)) {
     fail('Invalid --runtime (use "node" or "bun")');
     return;
@@ -98,6 +107,7 @@ export async function runDaemonInstall(opts: DaemonInstallOptions) {
     port,
     token: opts.token || cfg.gateway?.auth?.token || process.env.OPENCLAW_GATEWAY_TOKEN,
     runtime: runtimeRaw,
+    devMode,
     warn: (message) => {
       if (json) {
         warnings.push(message);

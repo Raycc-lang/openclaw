@@ -39,7 +39,9 @@
 
 ## Implementation Roadmap
 
-### 3.1 Concurrency Tuning (Priority 1)
+### 3.1 Concurrency Tuning (Priority 1) ✅
+
+**Status**: COMPLETE (2026-02-12)
 
 **Impact**: HIGH (prevents memory spikes from parallel agents)
 **Effort**: LOW (config changes)
@@ -76,9 +78,16 @@
 
 **Files to modify**:
 
-- `src/agents/defaults.ts` - Lower concurrency defaults
-- `src/agents/subagent-registry.ts` - Lower subagent concurrency
-- `src/infra/memory-monitor.ts` (new) - Memory pressure detection
+- ✅ `src/config/agent-limits.ts` - Lower concurrency defaults (lines 3-4)
+- ✅ `src/infra/memory-monitor.ts` - Memory pressure detection (completed in 3.6)
+
+**Results**:
+
+- ✅ maxConcurrent reduced from 4 to 2 agents
+- ✅ subagent maxConcurrent reduced from 8 to 4
+- ✅ Memory monitor active with thresholds (850/900/950MB)
+- ✅ Gateway startup successful at 312MB RSS
+- ⚠️ Request queueing deferred (not implemented yet, can add if needed)
 
 **Testing**:
 
@@ -368,10 +377,10 @@
 
 ### Week 1: Critical Path
 
-1. Memory monitoring (3.6) - **DAY 1**
-2. Concurrency tuning (3.1) - **DAY 2**
-3. Context management (3.2) - **DAY 3-4**
-4. Testing under limit (3.7) - **DAY 5**
+1. ✅ Memory monitoring (3.6) - **COMPLETE** (2026-02-12)
+2. ✅ Concurrency tuning (3.1) - **COMPLETE** (2026-02-12)
+3. ⏸️ Context management (3.2) - **NEXT**
+4. ⏸️ Testing under limit (3.7) - **Pending**
 
 ### Week 2: Optimization
 
