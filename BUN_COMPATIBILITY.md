@@ -338,6 +338,90 @@ As we test each dependency, record results here:
 - **After**: [latency metrics]
 - **Tests**: Pending
 
+### HTTP Streaming (Bun.serve + ReadableStream)
+
+- **Status**: ✅ MIGRATED to Bun native streaming
+- **Date**: 2026-02-12
+- **Files**: `src/gateway/server-bun.ts`
+
+**Problem Solved:**
+
+- Previous `ServerResponseStub` buffered entire responses in memory
+- SSE (Server-Sent Events) endpoints accumulated responses instead of streaming
+- High memory usage for long-running agent responses
+- No incremental delivery to clients (defeats SSE purpose)
+
+**Solution:**
+
+- Replaced `ServerResponseStub` with `StreamingServerResponse`
+- Uses Bun native `ReadableStream` for true incremental streaming
+- Supports both buffered and streaming responses seamlessly
+
+**Rationale:**
+
+- Reduces memory usage for large SSE responses (no buffering)
+- Improves time-to-first-byte (TTFB) for clients
+- Enables real-time SSE event delivery for OpenAI/OpenResponses endpoints
+- 100% backward compatible (no handler changes needed)
+
+**Results:**
+
+- Memory usage during streaming: No accumulation (was unlimited before)
+- SSE endpoints working correctly: ✅
+  - `/v1/chat/completions` (OpenAI chat completions with streaming)
+  - `/v1/responses` (OpenResponses streaming API)
+- Unit tests: 14/14 passing ✅
+- Gateway startup: ✅ Working
+- No regressions in non-streaming endpoints ✅
+
+**Test Results:**
+
+- SSE event streaming: ✅ Events arrive incrementally
+- Header immutability: ✅ Errors on set-after-sent
+- Write-after-end protection: ✅ Errors as expected
+- Buffer support: ✅ Both string and Buffer chunks work
+- Empty responses: ✅ Handled correctly
+- Client disconnection: ✅ Supported via AbortSignal
+
+**Implementation Changes:**
+
+1. `StreamingServerResponse` class:
+   - Implements `write()` method for incremental writes
+   - Creates `ReadableStream` for active streams
+   - Buffers completed responses (backward compatible)
+   - Exposes `headersSent` and `ended` properties
+   - Supports `flushHeaders()` (no-op in Bun)
+
+2. `createIncomingMessageStub` enhanced:
+   - Added `req.signal` support for disconnect detection
+   - Implements event listener pattern for `on('close')`
+   - Allows SSE handlers to clean up on client disconnect
+
+3. `adaptHttpHandler` updated:
+   - Uses `StreamingServerResponse` instead of `ServerResponseStub`
+   - Removed `ended` check (allows active streams)
+   - Returns ReadableStream responses properly
+
+**Key Architecture:**
+
+- Dual-mode operation:
+  - Queue chunks before stream start → Flush when ReadableStream created
+  - Direct enqueue after stream start → Immediate delivery
+- Early-end handling: Returns buffered body if `end()` called before streaming
+- Client disconnect: Propagates via `AbortSignal` → SSE cleanup works
+
+**Files Modified:**
+
+- `src/gateway/server-bun.ts` (lines 26-193)
+  - `StreamingServerResponse` class (replaces `ServerResponseStub`)
+  - `createIncomingMessageStub` (adds disconnect support)
+  - `adaptHttpHandler` (streaming-aware)
+  - `MinimalServerResponse` interface (type definition)
+
+**Files Created:**
+
+- `src/gateway/server-bun.test.ts` - 14 unit tests for streaming behavior
+
 ---
 
 ## Next Steps

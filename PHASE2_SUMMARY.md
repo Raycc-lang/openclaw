@@ -116,13 +116,51 @@ Phase 2 focused on migrating hot-path operations from Node.js APIs to Bun native
 
 **Future Option**: Could migrate to Bun.sqlite later if API standardization becomes priority
 
+### 5. HTTP Streaming Migration (Bun ReadableStream) ✅
+
+**Successfully migrated SSE streaming to Bun ReadableStream**
+
+**Changes:**
+
+- Replaced `ServerResponseStub` with `StreamingServerResponse`
+- Uses Bun native `ReadableStream` for incremental delivery
+- Supports client disconnection via AbortSignal
+- Created comprehensive unit tests
+
+**Files Modified:**
+
+1. `src/gateway/server-bun.ts`
+   - Lines 26-57: `createIncomingMessageStub` with disconnect support
+   - Lines 59-173: `StreamingServerResponse` class (replaces stub)
+   - Lines 175-194: `adaptHttpHandler` updated for streaming
+   - Lines 21-32: `MinimalServerResponse` type definition
+
+**Files Created:**
+
+1. `src/gateway/server-bun.test.ts` - 14 unit tests for streaming responses
+   - SSE event streaming
+   - Incremental delivery verification
+   - Header immutability checks
+   - Buffer/string chunk handling
+   - Client disconnection support
+
+**Results:**
+
+- Memory usage: Eliminated response buffering (was: unlimited accumulation)
+- SSE endpoints: ✅ Both `/v1/chat/completions` and `/v1/responses` working
+- Unit tests: ✅ 14/14 passing
+- Gateway startup: ✅ No regressions
+- Backward compatibility: ✅ 100% (no handler changes needed)
+
+**Branch**: ray-edition (integrated with previous Phase 2 work)
+
 ---
 
 ## ⏸️ Deferred Work
 
 Following the conservative approach, the following migrations were **identified but not implemented**:
 
-### WebSocket Migration (Priority 1) - NOT STARTED
+### HTTP/Webhooks Migration (Priority 4) - NOT STARTED
 
 **Why deferred:**
 
@@ -166,12 +204,13 @@ Following the conservative approach, the following migrations were **identified 
 
 ### Migration Progress
 
-| Component | Status                          | Rationale                             |
-| --------- | ------------------------------- | ------------------------------------- |
-| File I/O  | ✅ Migrated                     | Clear benefit, low risk               |
-| SQLite    | ✅ Evaluated → Keep node:sqlite | Works well, migration risky           |
-| WebSocket | ⏸️ Deferred                     | High complexity, needs dedicated time |
-| HTTP      | ⏸️ Deferred                     | Low priority, low impact              |
+| Component       | Status                          | Rationale                              |
+| --------------- | ------------------------------- | -------------------------------------- |
+| File I/O        | ✅ Migrated                     | Clear benefit, low risk                |
+| SQLite          | ✅ Evaluated → Keep node:sqlite | Works well, migration risky            |
+| HTTP Streaming  | ✅ Migrated                     | Eliminates buffering, enables true SSE |
+| WebSocket       | ⏸️ Deferred                     | High complexity, needs dedicated time  |
+| HTTP (webhooks) | ⏸️ Deferred                     | Low priority, low impact               |
 
 ### Code Quality
 

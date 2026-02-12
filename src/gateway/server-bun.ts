@@ -19,15 +19,41 @@ import { logWs } from "./ws-log.js";
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 
 /**
+ * Minimal ServerResponse interface that supports both buffered and streaming responses
+ */
+interface MinimalServerResponse {
+  statusCode: number;
+  setHeader(name: string, value: string): void;
+  write(chunk: string | Buffer): boolean;
+  end(data?: string | Buffer): void;
+  flushHeaders?(): void;
+  readonly headersSent: boolean;
+  readonly ended: boolean;
+}
+
+/**
  * HTTP request handler type for compatibility with existing handlers
  */
 export type HttpRequestHandler = (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
 
 /**
  * Create minimal IncomingMessage stub from Bun Request
+ * Supports client disconnection detection via request.signal
  */
 function createIncomingMessageStub(req: Request, remoteAddr?: string): IncomingMessage {
   const url = new URL(req.url);
+
+  // Create a simple EventEmitter-like close handler
+  const closeHandlers: Array<() => void> = [];
+
+  // Detect client disconnection via AbortSignal
+  const signal = req.signal;
+  if (signal) {
+    signal.addEventListener("abort", () => {
+      closeHandlers.forEach((handler) => handler());
+    });
+  }
+
   return {
     headers: Object.fromEntries(req.headers.entries()),
     url: url.pathname + url.search,
@@ -35,43 +61,133 @@ function createIncomingMessageStub(req: Request, remoteAddr?: string): IncomingM
     socket: {
       remoteAddress: remoteAddr,
     } as any,
+    on: (event: string, handler: () => void) => {
+      if (event === "close") {
+        closeHandlers.push(handler);
+      }
+    },
   } as any;
 }
 
 /**
- * Create minimal ServerResponse stub that collects response data
+ * Streaming adapter for Bun Response that supports res.write() pattern
+ * Enables true streaming for SSE (Server-Sent Events) and other streaming responses
  */
-class ServerResponseStub {
+class StreamingServerResponse {
   statusCode = 200;
   private _headers: Record<string, string> = {};
-  private _body: string = "";
+  private _headersSent = false;
   private _ended = false;
+  private _chunks: (string | Buffer)[] = [];
+  private _controller: ReadableStreamController<Uint8Array> | null = null;
 
   setHeader(name: string, value: string) {
+    if (this._headersSent) {
+      throw new Error("Cannot set headers after they are sent");
+    }
     this._headers[name] = value;
   }
 
-  end(data?: string) {
-    if (data) {
-      this._body += data;
+  write(chunk: string | Buffer): boolean {
+    if (this._ended) {
+      throw new Error("Cannot write after end");
     }
-    this._ended = true;
+
+    this._headersSent = true;
+
+    if (this._controller) {
+      // Stream already started, push directly
+      const encoded =
+        typeof chunk === "string" ? new TextEncoder().encode(chunk) : new Uint8Array(chunk);
+      this._controller.enqueue(encoded);
+    } else {
+      // Queue for later (will be flushed when toResponse() creates stream)
+      this._chunks.push(chunk);
+    }
+
+    return true; // Backpressure not implemented (could be added later)
   }
 
-  toResponse(): Response {
-    return new Response(this._body, {
-      status: this.statusCode,
-      headers: this._headers,
-    });
+  end(data?: string | Buffer) {
+    if (data) {
+      this.write(data);
+    }
+    this._ended = true;
+
+    if (this._controller) {
+      this._controller.close();
+    }
+  }
+
+  flushHeaders() {
+    this._headersSent = true;
+    // No-op in Bun - headers sent with Response
+  }
+
+  get headersSent(): boolean {
+    return this._headersSent;
   }
 
   get ended(): boolean {
     return this._ended;
   }
+
+  toResponse(): Response {
+    this._headersSent = true;
+
+    // If already ended with no writes, return simple response
+    if (this._ended && this._chunks.length === 0) {
+      return new Response(null, {
+        status: this.statusCode,
+        headers: this._headers,
+      });
+    }
+
+    // If ended with buffered chunks, return them all
+    if (this._ended) {
+      const body = this._chunks
+        .map((c) => (typeof c === "string" ? c : c.toString("utf-8")))
+        .join("");
+      return new Response(body, {
+        status: this.statusCode,
+        headers: this._headers,
+      });
+    }
+
+    // Still streaming - create ReadableStream
+    const stream = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        this._controller = controller;
+
+        // Flush any queued chunks
+        for (const chunk of this._chunks) {
+          const encoded =
+            typeof chunk === "string" ? new TextEncoder().encode(chunk) : new Uint8Array(chunk);
+          controller.enqueue(encoded);
+        }
+        this._chunks = []; // Clear queue
+
+        // If already ended, close immediately
+        if (this._ended) {
+          controller.close();
+        }
+      },
+      cancel: () => {
+        // Client disconnected
+        this._ended = true;
+      },
+    });
+
+    return new Response(stream, {
+      status: this.statusCode,
+      headers: this._headers,
+    });
+  }
 }
 
 /**
  * Adapt node:http style handler to Bun Request/Response
+ * Supports streaming responses via Readable Stream
  */
 async function adaptHttpHandler(
   req: Request,
@@ -79,13 +195,14 @@ async function adaptHttpHandler(
   remoteAddr?: string,
 ): Promise<Response | null> {
   const reqStub = createIncomingMessageStub(req, remoteAddr);
-  const resStub = new ServerResponseStub();
+  const resStub = new StreamingServerResponse();
 
   const handled = await handler(reqStub, resStub as any);
-  if (!handled || !resStub.ended) {
+  if (!handled) {
     return null;
   }
 
+  // For streaming responses, don't wait for end
   return resStub.toResponse();
 }
 
