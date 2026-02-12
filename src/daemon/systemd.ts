@@ -235,7 +235,7 @@ function buildSystemctlEnv(env: NodeJS.ProcessEnv): Record<string, string | unde
 }
 
 export async function isSystemdUserServiceAvailable(): Promise<boolean> {
-  const res = await execSystemctl(["--user", "status"]);
+  const res = await execSystemctlWithFallback(["--user", "status"]);
   if (res.code === 0) {
     return true;
   }
@@ -261,16 +261,64 @@ export async function isSystemdUserServiceAvailable(): Promise<boolean> {
   return false;
 }
 
+// Global flag: use system-wide mode when user bus unavailable
+let useSystemdSystemWide = false;
+
+async function execSystemctlSystem(
+  args: string[],
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  // Run systemctl without --user (system-wide mode), optionally with sudo if not root
+  const useSudo = process.getuid && process.getuid() !== 0;
+  const cmd = useSudo ? "sudo" : "systemctl";
+  const fullArgs = useSudo ? ["-n", "systemctl", ...args] : args;
+
+  if (typeof Bun !== "undefined" && typeof Bun.spawn === "function") {
+    const proc = Bun.spawn([cmd, ...fullArgs], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return {
+      stdout: String(stdout ?? ""),
+      stderr: String(stderr ?? ""),
+      code: typeof code === "number" ? code : 0,
+    };
+  }
+  return { stdout: "", stderr: "system-wide exec not implemented for Node", code: 1 };
+}
+
 async function assertSystemdAvailable() {
-  const res = await execSystemctl(["--user", "status"]);
+  const res = await execSystemctlWithFallback(["--user", "status"]);
   if (res.code === 0) {
+    useSystemdSystemWide = false;
     return;
   }
   const detail = res.stderr || res.stdout;
-  if (detail.toLowerCase().includes("not found")) {
-    throw new Error("systemctl not available; systemd user services are required on Linux.");
+  // Try system-wide as fallback
+  const sysRes = await execSystemctlSystem(["status"]);
+  if (sysRes.code === 0) {
+    useSystemdSystemWide = true;
+    return;
   }
-  throw new Error(`systemctl --user unavailable: ${detail || "unknown error"}`.trim());
+  if (detail.toLowerCase().includes("not found")) {
+    throw new Error("systemctl not available; systemd services are required on Linux.");
+  }
+  throw new Error(`systemd unavailable: ${detail || "unknown error"}`.trim());
+}
+
+async function execSystemctlWithFallback(
+  args: string[],
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  if (useSystemdSystemWide) {
+    // Remove --user from args for system-wide mode
+    const filtered = args.filter((a) => a !== "--user");
+    return execSystemctlSystem(filtered);
+  }
+  return execSystemctl(args);
 }
 
 export async function installSystemdService({
@@ -308,17 +356,17 @@ export async function installSystemdService({
 
   const serviceName = resolveGatewaySystemdServiceName(env.OPENCLAW_PROFILE);
   const unitName = `${serviceName}.service`;
-  const reload = await execSystemctl(["--user", "daemon-reload"]);
+  const reload = await execSystemctlWithFallback(["--user", "daemon-reload"]);
   if (reload.code !== 0) {
     throw new Error(`systemctl daemon-reload failed: ${reload.stderr || reload.stdout}`.trim());
   }
 
-  const enable = await execSystemctl(["--user", "enable", unitName]);
+  const enable = await execSystemctlWithFallback(["--user", "enable", unitName]);
   if (enable.code !== 0) {
     throw new Error(`systemctl enable failed: ${enable.stderr || enable.stdout}`.trim());
   }
 
-  const restart = await execSystemctl(["--user", "restart", unitName]);
+  const restart = await execSystemctlWithFallback(["--user", "restart", unitName]);
   if (restart.code !== 0) {
     throw new Error(`systemctl restart failed: ${restart.stderr || restart.stdout}`.trim());
   }
@@ -339,7 +387,7 @@ export async function uninstallSystemdService({
   await assertSystemdAvailable();
   const serviceName = resolveGatewaySystemdServiceName(env.OPENCLAW_PROFILE);
   const unitName = `${serviceName}.service`;
-  await execSystemctl(["--user", "disable", "--now", unitName]);
+  await execSystemctlWithFallback(["--user", "disable", "--now", unitName]);
 
   const unitPath = resolveSystemdUnitPath(env);
   try {
@@ -360,7 +408,7 @@ export async function stopSystemdService({
   await assertSystemdAvailable();
   const serviceName = resolveSystemdServiceName(env ?? {});
   const unitName = `${serviceName}.service`;
-  const res = await execSystemctl(["--user", "stop", unitName]);
+  const res = await execSystemctlWithFallback(["--user", "stop", unitName]);
   if (res.code !== 0) {
     throw new Error(`systemctl stop failed: ${res.stderr || res.stdout}`.trim());
   }
@@ -377,7 +425,7 @@ export async function restartSystemdService({
   await assertSystemdAvailable();
   const serviceName = resolveSystemdServiceName(env ?? {});
   const unitName = `${serviceName}.service`;
-  const res = await execSystemctl(["--user", "restart", unitName]);
+  const res = await execSystemctlWithFallback(["--user", "restart", unitName]);
   if (res.code !== 0) {
     throw new Error(`systemctl restart failed: ${res.stderr || res.stdout}`.trim());
   }
@@ -390,7 +438,7 @@ export async function isSystemdServiceEnabled(args: {
   await assertSystemdAvailable();
   const serviceName = resolveSystemdServiceName(args.env ?? {});
   const unitName = `${serviceName}.service`;
-  const res = await execSystemctl(["--user", "is-enabled", unitName]);
+  const res = await execSystemctlWithFallback(["--user", "is-enabled", unitName]);
   return res.code === 0;
 }
 
@@ -444,7 +492,7 @@ export type LegacySystemdUnit = {
 };
 
 async function isSystemctlAvailable(): Promise<boolean> {
-  const res = await execSystemctl(["--user", "status"]);
+  const res = await execSystemctlWithFallback(["--user", "status"]);
   if (res.code === 0) {
     return true;
   }
@@ -468,7 +516,7 @@ export async function findLegacySystemdUnits(
     }
     let enabled = false;
     if (systemctlAvailable) {
-      const res = await execSystemctl(["--user", "is-enabled", `${name}.service`]);
+      const res = await execSystemctlWithFallback(["--user", "is-enabled", `${name}.service`]);
       enabled = res.code === 0;
     }
     if (exists || enabled) {
@@ -493,7 +541,7 @@ export async function uninstallLegacySystemdUnits({
   const systemctlAvailable = await isSystemctlAvailable();
   for (const unit of units) {
     if (systemctlAvailable) {
-      await execSystemctl(["--user", "disable", "--now", `${unit.name}.service`]);
+      await execSystemctlWithFallback(["--user", "disable", "--now", `${unit.name}.service`]);
     } else {
       stdout.write(`systemctl unavailable; removed legacy unit file only: ${unit.name}.service\n`);
     }
