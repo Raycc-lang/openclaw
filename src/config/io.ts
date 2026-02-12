@@ -145,22 +145,6 @@ function stampConfigVersion(cfg: OpenClawConfig): OpenClawConfig {
   };
 }
 
-function warnIfConfigFromFuture(cfg: OpenClawConfig, logger: Pick<typeof console, "warn">): void {
-  const touched = cfg.meta?.lastTouchedVersion;
-  if (!touched) {
-    return;
-  }
-  const cmp = compareOpenClawVersions(VERSION, touched);
-  if (cmp === null) {
-    return;
-  }
-  if (cmp < 0) {
-    logger.warn(
-      `Config was last written by a newer OpenClaw (${touched}); current version is ${VERSION}.`,
-    );
-  }
-}
-
 function applyConfigEnv(cfg: OpenClawConfig, env: NodeJS.ProcessEnv): void {
   const entries = collectConfigEnvVars(cfg);
   for (const [key, value] of Object.entries(entries)) {
@@ -272,7 +256,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
           .join("\n");
         deps.logger.warn(`Config warnings:\\n${details}`);
       }
-      warnIfConfigFromFuture(validated.config, deps.logger);
+
       const cfg = applyModelDefaults(
         applyCompactionDefaults(
           applyContextPruningDefaults(
@@ -440,7 +424,6 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         };
       }
 
-      warnIfConfigFromFuture(validated.config, deps.logger);
       return {
         path: configPath,
         exists: true,

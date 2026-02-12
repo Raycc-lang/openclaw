@@ -1,0 +1,281 @@
+src/agents/pi-embedded-runner/run/images.ts(229,9): error TS2304: Cannot find name 'media'.
+src/agents/pi-embedded-runner/run/images.ts(230,72): error TS2304: Cannot find name 'media'.
+src/agents/pi-embedded-runner/run/images.ts(235,22): error TS2304: Cannot find name 'media'.
+src/agents/pi-embedded-runner/run/images.ts(236,18): error TS2304: Cannot find name 'media'.
+src/agents/tools/browser-tool.ts(10,8): error TS2307: Cannot find module '../../browser/client-actions.js' or its corresponding type declarations.
+src/agents/tools/browser-tool.ts(21,8): error TS2307: Cannot find module '../../browser/client.js' or its corresponding type declarations.
+src/agents/tools/browser-tool.ts(22,38): error TS7016: Could not find a declaration file for module '../../browser/config.js'. '/home/ray/miniAgent/src/browser/config.js' implicitly has an 'any' type.
+src/agents/tools/browser-tool.ts(23,47): error TS2307: Cannot find module '../../browser/constants.js' or its corresponding type declarations.
+src/agents/tools/image-tool.ts(446,9): error TS2322: Type '{}' is not assignable to type 'string'.
+src/agents/tools/web-search.ts(373,58): error TS2339: Property 'grokModel' does not exist on type '{ query: string; count: number; apiKey: string; timeoutSeconds: number; cacheTtlMs: number; provider: "brave" | "perplexity"; country?: string | undefined; search_lang?: string | undefined; ui_lang?: string | undefined; freshness?: string | undefined; perplexityBaseUrl?: string | undefined; perplexityModel?: string ...'.
+src/agents/tools/web-search.ts(373,71): error TS2304: Cannot find name 'DEFAULT_GROK_MODEL'.
+src/agents/tools/web-search.ts(373,100): error TS2339: Property 'grokInlineCitations' does not exist on type '{ query: string; count: number; apiKey: string; timeoutSeconds: number; cacheTtlMs: number; provider: "brave" | "perplexity"; country?: string | undefined; search_lang?: string | undefined; ui_lang?: string | undefined; freshness?: string | undefined; perplexityBaseUrl?: string | undefined; perplexityModel?: string ...'.
+src/auto-reply/reply/commands-allowlist.ts(282,17): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(282,53): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(287,23): error TS2304: Cannot find name 'resolved'.
+src/auto-reply/reply/commands-allowlist.ts(360,22): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(361,25): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(362,18): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(363,21): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(364,22): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(366,36): error TS2339: Property 'allowFrom' does not exist on type '{}'.
+src/auto-reply/reply/commands-allowlist.ts(370,34): error TS2339: Property 'topics' does not exist on type '{}'.
+src/auto-reply/reply/commands-allowlist.ts(372,43): error TS2339: Property 'allowFrom' does not exist on type '{}'.
+src/auto-reply/reply/commands-allowlist.ts(379,22): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(380,25): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(381,18): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(382,21): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(384,22): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(385,25): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(386,18): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(387,21): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(389,22): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(390,25): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(391,18): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(392,21): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(394,22): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(395,21): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(396,24): error TS2304: Cannot find name 'account'.
+src/auto-reply/reply/commands-allowlist.ts(399,35): error TS2339: Property 'users' does not exist on type '{}'.
+src/auto-reply/reply/commands-models.ts(194,28): error TS2304: Cannot find name 'ProviderInfo'.
+src/auto-reply/reply/commands-models.ts(198,23): error TS2304: Cannot find name 'buildProviderKeyboard'.
+src/auto-reply/reply/commands-models.ts(246,30): error TS2304: Cannot find name 'getModelsPageSize'.
+src/auto-reply/reply/commands-models.ts(247,24): error TS2304: Cannot find name 'calculateTotalPages'.
+src/auto-reply/reply/commands-models.ts(250,21): error TS2304: Cannot find name 'buildModelsKeyboard'.
+src/auto-reply/reply/directive-handling.model.ts(228,36): error TS18004: No value exists in scope for the shorthand property 'buttons'. Either declare one or provide an initializer.
+src/auto-reply/reply/test-helpers.ts(1,20): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
+src/channels/plugins/agent-tools/whatsapp-login.ts(20,69): error TS2307: Cannot find module '../../../web/login-qr.js' or its corresponding type declarations.
+src/channels/plugins/whatsapp-heartbeat.ts(26,9): error TS2367: This comparison appears to be unintentional because the types '"discord" | "googlechat" | null' and '"whatsapp"' have no overlap.
+src/cli/browser-cli-actions-input/shared.ts(2,39): error TS2307: Cannot find module '../../browser/client-actions-core.js' or its corresponding type declarations.
+src/cli/browser-cli-extension.ts(5,33): error TS7016: Could not find a declaration file for module '../browser/trash.js'. '/home/ray/miniAgent/src/browser/trash.js' implicitly has an 'any' type.
+src/cli/browser-cli-inspect.ts(2,37): error TS2307: Cannot find module '../browser/client.js' or its corresponding type declarations.
+src/cli/browser-cli-inspect.ts(147,19): error TS7006: Parameter 'n' implicitly has an 'any' type.
+src/cli/browser-cli-manage.ts(9,8): error TS2307: Cannot find module '../browser/client.js' or its corresponding type declarations.
+src/cli/outbound-send-deps.ts(4,53): error TS2339: Property 'sendWhatsApp' does not exist on type 'OutboundSendDeps'.
+src/cli/outbound-send-deps.ts(5,53): error TS2339: Property 'sendTelegram' does not exist on type 'OutboundSendDeps'.
+src/cli/outbound-send-deps.ts(7,50): error TS2339: Property 'sendSlack' does not exist on type 'OutboundSendDeps'.
+src/cli/outbound-send-deps.ts(8,51): error TS2339: Property 'sendSignal' does not exist on type 'OutboundSendDeps'.
+src/cli/outbound-send-deps.ts(9,53): error TS2339: Property 'sendIMessage' does not exist on type 'OutboundSendDeps'.
+src/cli/outbound-send-deps.ts(15,5): error TS2353: Object literal may only specify known properties, and 'sendWhatsApp' does not exist in type 'OutboundSendDeps'.
+src/cli/program/message/helpers.ts(52,11): error TS2345: Argument of type 'import("/home/ray/miniAgent/src/cli/deps", { with: { "resolution-mode": "import" } }).CliDeps' is not assignable to parameter of type 'import("/home/ray/miniAgent/src/cli/outbound-send-deps", { with: { "resolution-mode": "import" } }).CliDeps'.
+  Type 'CliDeps' is missing the following properties from type 'CliDeps': sendMessageWhatsApp, sendMessageTelegram, sendMessageSlack, sendMessageSignal, sendMessageIMessage
+src/commands/agent.ts(518,7): error TS2739: Type 'CliDeps' is missing the following properties from type 'CliDeps': sendMessageWhatsApp, sendMessageTelegram, sendMessageSlack, sendMessageSignal, sendMessageIMessage
+src/commands/channels/capabilities.ts(393,11): error TS2353: Object literal may only specify known properties, and 'result' does not exist in type '{ tokenType: "user" | "bot"; }'.
+src/commands/channels/capabilities.ts(522,30): error TS2339: Property 'result' does not exist on type '{ tokenType: "user" | "bot"; }'.
+src/commands/channels/capabilities.ts(522,57): error TS2339: Property 'result' does not exist on type '{ tokenType: "user" | "bot"; }'.
+src/commands/channels/capabilities.ts(524,19): error TS2339: Property 'result' does not exist on type '{ tokenType: "user" | "bot"; }'.
+src/commands/channels/capabilities.ts(524,38): error TS2339: Property 'result' does not exist on type '{ tokenType: "user" | "bot"; }'.
+src/commands/channels/capabilities.ts(525,50): error TS2339: Property 'result' does not exist on type '{ tokenType: "user" | "bot"; }'.
+src/commands/channels/capabilities.ts(526,26): error TS2339: Property 'result' does not exist on type '{ tokenType: "user" | "bot"; }'.
+src/commands/channels/capabilities.ts(527,53): error TS2339: Property 'result' does not exist on type '{ tokenType: "user" | "bot"; }'.
+src/commands/onboarding/__tests__/test-utils.ts(1,20): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
+src/config/test-helpers.ts(1,20): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
+src/config/zod-schema.providers-core.ts(76,52): error TS2554: Expected 0 arguments, but got 1.
+src/config/zod-schema.providers-core.ts(84,38): error TS2339: Property 'index' does not exist on type 'never'.
+src/config/zod-schema.providers-core.ts(84,51): error TS2339: Property 'field' does not exist on type 'never'.
+src/config/zod-schema.providers-core.ts(85,22): error TS2339: Property 'message' does not exist on type 'never'.
+src/discord/monitor/native-command.ts(892,17): error TS2304: Cannot find name 'loaded'.
+src/discord/monitor/native-command.ts(893,17): error TS2304: Cannot find name 'loaded'.
+src/discord/send.emojis-stickers.ts(13,23): error TS2304: Cannot find name 'media'.
+src/discord/send.emojis-stickers.ts(20,47): error TS2304: Cannot find name 'media'.
+src/discord/send.emojis-stickers.ts(36,23): error TS2304: Cannot find name 'media'.
+src/discord/send.emojis-stickers.ts(47,17): error TS2304: Cannot find name 'media'.
+src/discord/send.emojis-stickers.ts(48,17): error TS2304: Cannot find name 'media'.
+src/discord/send.shared.ts(370,21): error TS2304: Cannot find name 'media'.
+src/discord/send.shared.ts(371,21): error TS2304: Cannot find name 'media'.
+src/gateway/server-browser.ts(14,64): error TS7016: Could not find a declaration file for module '../browser/control-service.js'. '/home/ray/miniAgent/src/browser/control-service.js' implicitly has an 'any' type.
+src/gateway/server-bun.ts(14,32): error TS7016: Could not find a declaration file for module '../canvas-host/a2ui.js'. '/home/ray/miniAgent/src/canvas-host/a2ui.js' implicitly has an 'any' type.
+src/gateway/server-bun.ts(121,65): error TS2314: Generic type 'Server<WebSocketData>' requires 1 type argument(s).
+src/gateway/server-bun.ts(145,5): error TS2322: Type 'TlsOptions | undefined' is not assignable to type 'TLSOptions | TLSOptions[] | undefined'.
+  Type 'TlsOptions' is not assignable to type 'TLSOptions | TLSOptions[] | undefined'.
+    Type 'TlsOptions' is not assignable to type 'TLSOptions'.
+      Types of property 'key' are incompatible.
+        Type 'string | Buffer<ArrayBufferLike> | (string | Buffer<ArrayBufferLike> | KeyObject)[] | undefined' is not assignable to type 'string | BunFile | BufferSource | (string | BunFile | BufferSource)[] | undefined'.
+          Type '(string | Buffer<ArrayBufferLike> | KeyObject)[]' is not assignable to type 'string | BunFile | BufferSource | (string | BunFile | BufferSource)[] | undefined'.
+            Type '(string | Buffer<ArrayBufferLike> | KeyObject)[]' is not assignable to type '(string | BunFile | BufferSource)[]'.
+              Type 'string | Buffer<ArrayBufferLike> | KeyObject' is not assignable to type 'string | BunFile | BufferSource'.
+                Type 'KeyObject' is not assignable to type 'string | BunFile | BufferSource'.
+src/gateway/server-bun.ts(161,11): error TS2322: Type 'GatewayWsData' is not assignable to type 'undefined'.
+src/gateway/server-bun.ts(196,7): error TS2322: Type '(ws: ServerWebSocket<GatewayWsData>) => void' is not assignable to type '(ws: ServerWebSocket<undefined>) => void | Promise<void>'.
+  Types of parameters 'ws' and 'ws' are incompatible.
+    Type 'ServerWebSocket<undefined>' is not assignable to type 'ServerWebSocket<GatewayWsData>'.
+      Type 'undefined' is not assignable to type 'GatewayWsData'.
+src/gateway/server-bun.ts(248,7): error TS2322: Type '(ws: ServerWebSocket<GatewayWsData>, message: string | Buffer<ArrayBufferLike>) => void' is not assignable to type '(ws: ServerWebSocket<undefined>, message: string | Buffer<ArrayBuffer>) => void | Promise<void>'.
+  Types of parameters 'ws' and 'ws' are incompatible.
+    Type 'ServerWebSocket<undefined>' is not assignable to type 'ServerWebSocket<GatewayWsData>'.
+      Type 'undefined' is not assignable to type 'GatewayWsData'.
+src/gateway/server-bun.ts(254,7): error TS2322: Type '(ws: ServerWebSocket<GatewayWsData>, code: number, reason: string) => void' is not assignable to type '(ws: ServerWebSocket<undefined>, code: number, reason: string) => void | Promise<void>'.
+  Types of parameters 'ws' and 'ws' are incompatible.
+    Type 'ServerWebSocket<undefined>' is not assignable to type 'ServerWebSocket<GatewayWsData>'.
+      Type 'undefined' is not assignable to type 'GatewayWsData'.
+src/gateway/server-bun.ts(269,7): error TS2322: Type '(ws: ServerWebSocket<GatewayWsData>) => void' is not assignable to type '(ws: ServerWebSocket<undefined>) => void | Promise<void>'.
+  Types of parameters 'ws' and 'ws' are incompatible.
+    Type 'ServerWebSocket<undefined>' is not assignable to type 'ServerWebSocket<GatewayWsData>'.
+      Type 'undefined' is not assignable to type 'GatewayWsData'.
+src/gateway/server-close.ts(4,58): error TS7016: Could not find a declaration file for module '../canvas-host/server.js'. '/home/ray/miniAgent/src/canvas-host/server.js' implicitly has an 'any' type.
+src/gateway/server-close.ts(30,15): error TS2314: Generic type 'Server<WebSocketData>' requires 1 type argument(s).
+src/gateway/server-cron.ts(70,9): error TS2739: Type 'CliDeps' is missing the following properties from type 'CliDeps': sendMessageWhatsApp, sendMessageTelegram, sendMessageSlack, sendMessageSignal, sendMessageIMessage
+src/gateway/server-http.ts(10,40): error TS7016: Could not find a declaration file for module '../canvas-host/server.js'. '/home/ray/miniAgent/src/canvas-host/server.js' implicitly has an 'any' type.
+src/gateway/server-http.ts(19,8): error TS7016: Could not find a declaration file for module '../canvas-host/a2ui.js'. '/home/ray/miniAgent/src/canvas-host/a2ui.js' implicitly has an 'any' type.
+src/gateway/server-methods/agents.ts(21,33): error TS7016: Could not find a declaration file for module '../../browser/trash.js'. '/home/ray/miniAgent/src/browser/trash.js' implicitly has an 'any' type.
+src/gateway/server-methods/browser.ts(7,8): error TS7016: Could not find a declaration file for module '../../browser/control-service.js'. '/home/ray/miniAgent/src/browser/control-service.js' implicitly has an 'any' type.
+src/gateway/server-methods/browser.ts(8,46): error TS7016: Could not find a declaration file for module '../../browser/routes/dispatcher.js'. '/home/ray/miniAgent/src/browser/routes/dispatcher.js' implicitly has an 'any' type.
+src/gateway/server-runtime-state-bun.ts(18,34): error TS7016: Could not find a declaration file for module '../canvas-host/a2ui.js'. '/home/ray/miniAgent/src/canvas-host/a2ui.js' implicitly has an 'any' type.
+src/gateway/server-runtime-state-bun.ts(19,65): error TS7016: Could not find a declaration file for module '../canvas-host/server.js'. '/home/ray/miniAgent/src/canvas-host/server.js' implicitly has an 'any' type.
+src/gateway/server-runtime-state-bun.ts(61,14): error TS2314: Generic type 'Server<WebSocketData>' requires 1 type argument(s).
+src/gateway/server-runtime-state.ts(14,34): error TS7016: Could not find a declaration file for module '../canvas-host/a2ui.js'. '/home/ray/miniAgent/src/canvas-host/a2ui.js' implicitly has an 'any' type.
+src/gateway/server-runtime-state.ts(15,65): error TS7016: Could not find a declaration file for module '../canvas-host/server.js'. '/home/ray/miniAgent/src/canvas-host/server.js' implicitly has an 'any' type.
+src/gateway/server.impl.ts(2,39): error TS7016: Could not find a declaration file for module '../canvas-host/server.js'. '/home/ray/miniAgent/src/canvas-host/server.js' implicitly has an 'any' type.
+src/gateway/server/hooks.ts(78,11): error TS2739: Type 'CliDeps' is missing the following properties from type 'CliDeps': sendMessageWhatsApp, sendMessageTelegram, sendMessageSlack, sendMessageSignal, sendMessageIMessage
+src/gateway/server/ws-connection/message-handler-bun.ts(163,5): error TS2322: Type '() => GatewayWsClient | undefined' is not assignable to type '() => GatewayWsClient | null'.
+  Type 'GatewayWsClient | undefined' is not assignable to type 'GatewayWsClient | null'.
+    Type 'undefined' is not assignable to type 'GatewayWsClient | null'.
+src/gateway/test-helpers.e2e.ts(8,47): error TS2307: Cannot find module '../test-utils/ports.js' or its corresponding type declarations.
+src/gateway/test-helpers.mocks.ts(6,26): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
+src/gateway/test-helpers.mocks.ts(238,14): error TS4112: This member cannot have an 'override' modifier because its containing class 'MockModelRegistry' does not extend another class.
+src/gateway/test-helpers.mocks.ts(565,54): error TS2307: Cannot find module '../channels/web/index.js' or its corresponding type declarations.
+src/gateway/test-helpers.server.ts(5,72): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
+src/gateway/test-helpers.server.ts(19,47): error TS2307: Cannot find module '../test-utils/ports.js' or its corresponding type declarations.
+src/infra/outbound/message-action-runner.ts(232,8): error TS2304: Cannot find name 'parsedTarget'.
+src/infra/outbound/message-action-runner.ts(232,24): error TS2304: Cannot find name 'parsedTarget'.
+src/infra/outbound/message-action-runner.ts(235,7): error TS2304: Cannot find name 'parsedTarget'.
+src/infra/outbound/message-action-runner.ts(263,7): error TS2304: Cannot find name 'parsedTo'.
+src/infra/outbound/message-action-runner.ts(263,41): error TS2304: Cannot find name 'parsedChannel'.
+src/infra/outbound/message-action-runner.ts(437,26): error TS2304: Cannot find name 'media'.
+src/infra/outbound/message-action-runner.ts(438,30): error TS2304: Cannot find name 'media'.
+src/infra/outbound/message-action-runner.ts(439,33): error TS2304: Cannot find name 'media'.
+src/infra/outbound/message-action-runner.ts(443,20): error TS2304: Cannot find name 'media'.
+src/infra/outbound/message-action-runner.ts(444,22): error TS2304: Cannot find name 'media'.
+src/infra/outbound/message-action-runner.ts(500,26): error TS2304: Cannot find name 'media'.
+src/infra/outbound/message-action-runner.ts(501,30): error TS2304: Cannot find name 'media'.
+src/infra/outbound/message-action-runner.ts(502,33): error TS2304: Cannot find name 'media'.
+src/infra/outbound/message-action-runner.ts(506,20): error TS2304: Cannot find name 'media'.
+src/infra/outbound/message-action-runner.ts(507,22): error TS2304: Cannot find name 'media'.
+src/infra/outbound/outbound-session.ts(138,5): error TS2304: Cannot find name 'groupChannels'.
+src/infra/outbound/outbound-session.ts(139,5): error TS2304: Cannot find name 'groupChannels'.
+src/infra/outbound/outbound-session.ts(140,5): error TS2304: Cannot find name 'groupChannels'.
+src/infra/outbound/outbound-session.ts(141,5): error TS2304: Cannot find name 'groupChannels'.
+src/infra/outbound/outbound-session.ts(142,5): error TS2304: Cannot find name 'groupChannels'.
+src/infra/outbound/outbound-session.ts(144,37): error TS2304: Cannot find name 'account'.
+src/infra/outbound/outbound-session.ts(148,35): error TS2304: Cannot find name 'account'.
+src/infra/outbound/outbound-session.ts(159,37): error TS2304: Cannot find name 'account'.
+src/infra/outbound/outbound-session.ts(164,5): error TS2304: Cannot find name 'account'.
+src/infra/outbound/outbound-session.ts(165,13): error TS2304: Cannot find name 'account'.
+src/infra/outbound/outbound-session.ts(165,53): error TS2304: Cannot find name 'account'.
+src/infra/outbound/outbound-session.ts(167,37): error TS2304: Cannot find name 'account'.
+src/infra/outbound/outbound-session.ts(172,24): error TS2304: Cannot find name 'client'.
+src/infra/outbound/outbound-session.ts(175,37): error TS2304: Cannot find name 'account'.
+src/infra/outbound/outbound-session.ts(178,37): error TS2304: Cannot find name 'account'.
+src/infra/outbound/outbound-session.ts(186,8): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(189,16): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(191,27): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(196,18): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(207,9): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(228,20): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(230,28): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(231,30): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(232,37): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(232,62): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(278,18): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(282,26): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(289,5): error TS2304: Cannot find name 'chatType'.
+src/infra/outbound/outbound-session.ts(290,6): error TS2304: Cannot find name 'chatType'.
+src/infra/outbound/outbound-session.ts(295,9): error TS2304: Cannot find name 'peerId'.
+src/infra/outbound/outbound-session.ts(309,39): error TS2304: Cannot find name 'peerId'.
+src/infra/outbound/outbound-session.ts(318,8): error TS2304: Cannot find name 'normalized'.
+src/infra/outbound/outbound-session.ts(322,11): error TS2304: Cannot find name 'isGroup'.
+src/infra/outbound/outbound-session.ts(323,9): error TS2304: Cannot find name 'normalized'.
+src/infra/outbound/outbound-session.ts(336,15): error TS2304: Cannot find name 'isGroup'.
+src/infra/outbound/outbound-session.ts(337,11): error TS2304: Cannot find name 'normalized'.
+src/infra/outbound/outbound-session.ts(338,9): error TS2304: Cannot find name 'normalized'.
+src/infra/outbound/outbound-session.ts(383,18): error TS2304: Cannot find name 'resolveSignalSender'.
+src/infra/outbound/outbound-session.ts(387,27): error TS2304: Cannot find name 'resolveSignalPeerId'.
+src/infra/outbound/outbound-session.ts(388,37): error TS2304: Cannot find name 'resolveSignalRecipient'.
+src/infra/outbound/outbound-session.ts(410,7): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(411,10): error TS2304: Cannot find name 'handle'.
+src/infra/outbound/outbound-session.ts(414,47): error TS2304: Cannot find name 'handle'.
+src/infra/outbound/outbound-session.ts(427,25): error TS2304: Cannot find name 'handle'.
+src/infra/outbound/outbound-session.ts(428,23): error TS2304: Cannot find name 'handle'.
+src/infra/outbound/outbound-session.ts(433,5): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(434,16): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(435,9): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(436,11): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(437,11): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(450,5): error TS2304: Cannot find name 'parsed'.
+src/infra/outbound/outbound-session.ts(452,9): error TS2304: Cannot find name 'parsed'.
+src/memory/embeddings.ts(1,63): error TS2307: Cannot find module 'node-llama-cpp' or its corresponding type declarations.
+src/memory/embeddings.ts(8,36): error TS7016: Could not find a declaration file for module './node-llama.js'. '/home/ray/miniAgent/src/memory/node-llama.js' implicitly has an 'any' type.
+src/node-host/runner.ts(7,38): error TS7016: Could not find a declaration file for module '../browser/config.js'. '/home/ray/miniAgent/src/browser/config.js' implicitly has an 'any' type.
+src/node-host/runner.ts(11,8): error TS7016: Could not find a declaration file for module '../browser/control-service.js'. '/home/ray/miniAgent/src/browser/control-service.js' implicitly has an 'any' type.
+src/node-host/runner.ts(12,46): error TS7016: Could not find a declaration file for module '../browser/routes/dispatcher.js'. '/home/ray/miniAgent/src/browser/routes/dispatcher.js' implicitly has an 'any' type.
+src/node-host/runner.ts(802,11): error TS18046: 'response' is of type 'unknown'.
+src/node-host/runner.ts(804,11): error TS18046: 'response' is of type 'unknown'.
+src/node-host/runner.ts(804,35): error TS18046: 'response' is of type 'unknown'.
+src/node-host/runner.ts(804,76): error TS18046: 'response' is of type 'unknown'.
+src/node-host/runner.ts(805,23): error TS18046: 'response' is of type 'unknown'.
+src/node-host/runner.ts(806,23): error TS18046: 'response' is of type 'unknown'.
+src/node-host/runner.ts(809,22): error TS18046: 'response' is of type 'unknown'.
+src/plugin-sdk/index.ts(154,3): error TS2305: Module '"../channels/plugins/group-mentions.js"' has no exported member 'resolveBlueBubblesGroupRequireMention'.
+src/plugin-sdk/index.ts(157,3): error TS2724: '"../channels/plugins/group-mentions.js"' has no exported member named 'resolveIMessageGroupRequireMention'. Did you mean 'resolveDiscordGroupRequireMention'?
+src/plugin-sdk/index.ts(158,3): error TS2724: '"../channels/plugins/group-mentions.js"' has no exported member named 'resolveSlackGroupRequireMention'. Did you mean 'resolveDiscordGroupRequireMention'?
+src/plugin-sdk/index.ts(159,3): error TS2724: '"../channels/plugins/group-mentions.js"' has no exported member named 'resolveTelegramGroupRequireMention'. Did you mean 'resolveGoogleChatGroupRequireMention'?
+src/plugin-sdk/index.ts(160,3): error TS2305: Module '"../channels/plugins/group-mentions.js"' has no exported member 'resolveBlueBubblesGroupToolPolicy'.
+src/plugin-sdk/index.ts(163,3): error TS2724: '"../channels/plugins/group-mentions.js"' has no exported member named 'resolveIMessageGroupToolPolicy'. Did you mean 'resolveDiscordGroupToolPolicy'?
+src/plugin-sdk/index.ts(164,3): error TS2724: '"../channels/plugins/group-mentions.js"' has no exported member named 'resolveSlackGroupToolPolicy'. Did you mean 'resolveDiscordGroupToolPolicy'?
+src/plugin-sdk/index.ts(165,3): error TS2724: '"../channels/plugins/group-mentions.js"' has no exported member named 'resolveTelegramGroupToolPolicy'. Did you mean 'resolveGoogleChatGroupToolPolicy'?
+src/plugin-sdk/index.ts(178,3): error TS2724: '"../channels/plugins/directory-config.js"' has no exported member named 'listSlackDirectoryGroupsFromConfig'. Did you mean 'listDiscordDirectoryGroupsFromConfig'?
+src/plugin-sdk/index.ts(179,3): error TS2724: '"../channels/plugins/directory-config.js"' has no exported member named 'listSlackDirectoryPeersFromConfig'. Did you mean 'listDiscordDirectoryPeersFromConfig'?
+src/plugin-sdk/index.ts(180,3): error TS2724: '"../channels/plugins/directory-config.js"' has no exported member named 'listTelegramDirectoryGroupsFromConfig'. Did you mean 'listDiscordDirectoryGroupsFromConfig'?
+src/plugin-sdk/index.ts(181,3): error TS2724: '"../channels/plugins/directory-config.js"' has no exported member named 'listTelegramDirectoryPeersFromConfig'. Did you mean 'listDiscordDirectoryPeersFromConfig'?
+src/plugins/runtime/index.ts(138,5): error TS2740: Type '{ text: { chunkByNewline: (text: string, maxLineLength: number, opts?: { splitLongLines?: boolean | undefined; trimLines?: boolean | undefined; isSafeBreak?: ((index: number) => boolean) | undefined; } | undefined) => string[]; ... 8 more ...; convertMarkdownTables: (markdown: string, mode: MarkdownTableMode) => str...' is missing the following properties from type '{ text: { chunkByNewline: (text: string, maxLineLength: number, opts?: { splitLongLines?: boolean | undefined; trimLines?: boolean | undefined; isSafeBreak?: ((index: number) => boolean) | undefined; } | undefined) => string[]; ... 8 more ...; convertMarkdownTables: (markdown: string, mode: MarkdownTableMode) => str...': slack, telegram, signal, imessage, and 2 more.
+src/plugins/runtime/types.ts(78,35): error TS2307: Cannot find module '../../web/media.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(105,17): error TS2307: Cannot find module '../../slack/directory-live.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(107,17): error TS2307: Cannot find module '../../slack/directory-live.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(108,33): error TS2307: Cannot find module '../../slack/probe.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(110,17): error TS2307: Cannot find module '../../slack/resolve-channels.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(112,17): error TS2307: Cannot find module '../../slack/resolve-users.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(113,39): error TS2307: Cannot find module '../../slack/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(114,43): error TS2307: Cannot find module '../../slack/index.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(115,40): error TS2307: Cannot find module '../../agents/tools/slack-actions.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(117,17): error TS2307: Cannot find module '../../telegram/audit.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(119,17): error TS2307: Cannot find module '../../telegram/audit.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(120,36): error TS2307: Cannot find module '../../telegram/probe.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(121,43): error TS2307: Cannot find module '../../telegram/token.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(122,42): error TS2307: Cannot find module '../../telegram/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(123,46): error TS2307: Cannot find module '../../telegram/monitor.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(125,17): error TS2307: Cannot find module '../../channels/plugins/actions/telegram.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(126,34): error TS2307: Cannot find module '../../signal/probe.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(127,40): error TS2307: Cannot find module '../../signal/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(128,44): error TS2307: Cannot find module '../../signal/index.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(130,17): error TS2307: Cannot find module '../../channels/plugins/actions/signal.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(131,46): error TS2307: Cannot find module '../../imessage/monitor.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(132,36): error TS2307: Cannot find module '../../imessage/probe.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(133,42): error TS2307: Cannot find module '../../imessage/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(134,43): error TS2307: Cannot find module '../../web/active-listener.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(135,38): error TS2307: Cannot find module '../../web/auth-store.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(136,32): error TS2307: Cannot find module '../../web/auth-store.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(137,35): error TS2307: Cannot find module '../../web/auth-store.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(138,36): error TS2307: Cannot find module '../../web/auth-store.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(139,36): error TS2307: Cannot find module '../../web/auth-store.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(140,42): error TS2307: Cannot find module '../../web/outbound.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(141,39): error TS2307: Cannot find module '../../web/outbound.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(142,31): error TS2307: Cannot find module '../../web/login.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(143,42): error TS2307: Cannot find module '../../web/login-qr.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(144,38): error TS2307: Cannot find module '../../web/login-qr.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(145,40): error TS2307: Cannot find module '../../channels/web/index.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(147,17): error TS2307: Cannot find module '../../agents/tools/whatsapp-actions.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(152,41): error TS2307: Cannot find module '../../line/accounts.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(154,17): error TS2307: Cannot find module '../../line/accounts.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(155,41): error TS2307: Cannot find module '../../line/accounts.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(156,45): error TS2307: Cannot find module '../../line/accounts.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(157,35): error TS2307: Cannot find module '../../line/probe.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(158,38): error TS2307: Cannot find module '../../line/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(159,38): error TS2307: Cannot find module '../../line/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(160,39): error TS2307: Cannot find module '../../line/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(161,38): error TS2307: Cannot find module '../../line/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(162,42): error TS2307: Cannot find module '../../line/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(163,42): error TS2307: Cannot find module '../../line/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(165,17): error TS2307: Cannot find module '../../line/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(166,44): error TS2307: Cannot find module '../../line/send.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(168,17): error TS2307: Cannot find module '../../line/template-messages.js' or its corresponding type declarations.
+src/plugins/runtime/types.ts(169,42): error TS2307: Cannot find module '../../line/monitor.js' or its corresponding type declarations.

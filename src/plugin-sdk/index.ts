@@ -154,15 +154,9 @@ export {
   resolveBlueBubblesGroupRequireMention,
   resolveDiscordGroupRequireMention,
   resolveGoogleChatGroupRequireMention,
-  resolveIMessageGroupRequireMention,
-  resolveSlackGroupRequireMention,
-  resolveTelegramGroupRequireMention,
   resolveBlueBubblesGroupToolPolicy,
   resolveDiscordGroupToolPolicy,
   resolveGoogleChatGroupToolPolicy,
-  resolveIMessageGroupToolPolicy,
-  resolveSlackGroupToolPolicy,
-  resolveTelegramGroupToolPolicy,
 } from "../channels/plugins/group-mentions.js";
 export { recordInboundSession } from "../channels/session.js";
 export {
@@ -175,10 +169,6 @@ export {
 export {
   listDiscordDirectoryGroupsFromConfig,
   listDiscordDirectoryPeersFromConfig,
-  listSlackDirectoryGroupsFromConfig,
-  listSlackDirectoryPeersFromConfig,
-  listTelegramDirectoryGroupsFromConfig,
-  listTelegramDirectoryPeersFromConfig,
 } from "../channels/plugins/directory-config.js";
 export type { AllowlistMatch } from "../channels/plugins/allowlist-match.js";
 export { formatAllowlistMatchMeta } from "../channels/plugins/allowlist-match.js";

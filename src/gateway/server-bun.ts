@@ -3,9 +3,8 @@
  * Simplified version focusing on WebSocket with minimal HTTP handling
  */
 
-import type { Server, ServerWebSocket } from "bun";
+import type { Server, ServerWebSocket, TLSOptions } from "bun";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { TlsOptions } from "node:tls";
 import { randomUUID } from "node:crypto";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
@@ -95,7 +94,7 @@ export interface BunServerOptions {
   port: number;
   clients: Set<GatewayWsClient>;
   resolvedAuth: ResolvedGatewayAuth;
-  tlsOptions?: TlsOptions;
+  tlsOptions?: TLSOptions;
   gatewayHost?: string;
   canvasHostEnabled: boolean;
   canvasHostServerPort?: number;
@@ -118,7 +117,7 @@ export interface BunServerOptions {
   httpHandlers?: HttpRequestHandler[];
 }
 
-export function createGatewayBunServer(opts: BunServerOptions): Server {
+export function createGatewayBunServer(opts: BunServerOptions): Server<GatewayWsData> {
   const {
     bindHost,
     port,
@@ -139,7 +138,7 @@ export function createGatewayBunServer(opts: BunServerOptions): Server {
     httpHandlers = [],
   } = opts;
 
-  const server = Bun.serve({
+  const server = Bun.serve<GatewayWsData>({
     port,
     hostname: bindHost,
     tls: tlsOptions,
@@ -169,7 +168,7 @@ export function createGatewayBunServer(opts: BunServerOptions): Server {
             requestUserAgent: req.headers.get("user-agent") ?? undefined,
             forwardedFor: req.headers.get("x-forwarded-for") ?? undefined,
             realIp: req.headers.get("x-real-ip") ?? undefined,
-          } as GatewayWsData,
+          },
         });
 
         if (success) {
