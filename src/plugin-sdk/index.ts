@@ -141,14 +141,8 @@ export {
   resolveMentionGating,
   resolveMentionGatingWithBypass,
 } from "../channels/mention-gating.js";
-export type {
-  AckReactionGateParams,
-  AckReactionScope,
-} from "../channels/ack-reactions.js";
-export {
-  removeAckReactionAfterReply,
-  shouldAckReaction,
-} from "../channels/ack-reactions.js";
+export type { AckReactionGateParams, AckReactionScope } from "../channels/ack-reactions.js";
+export { removeAckReactionAfterReply, shouldAckReaction } from "../channels/ack-reactions.js";
 export { createTypingCallbacks } from "../channels/typing.js";
 export { createReplyPrefixContext, createReplyPrefixOptions } from "../channels/reply-prefix.js";
 export { logAckFailure, logInboundDrop, logTypingFailure } from "../channels/logging.js";
@@ -262,81 +256,7 @@ export {
 } from "../channels/plugins/normalize/discord.js";
 export { collectDiscordStatusIssues } from "../channels/plugins/status-issues/discord.js";
 
-// Channel: iMessage
-export {
-  listIMessageAccountIds,
-  resolveDefaultIMessageAccountId,
-  resolveIMessageAccount,
-  type ResolvedIMessageAccount,
-export {
-  looksLikeIMessageTargetId,
-  normalizeIMessageMessagingTarget,
-} from "../channels/plugins/normalize/imessage.js";
-
-// Channel: Slack
-export {
-  listEnabledSlackAccounts,
-  listSlackAccountIds,
-  resolveDefaultSlackAccountId,
-  resolveSlackAccount,
-  resolveSlackReplyToMode,
-  type ResolvedSlackAccount,
-export {
-  looksLikeSlackTargetId,
-  normalizeSlackMessagingTarget,
-} from "../channels/plugins/normalize/slack.js";
-
-// Channel: Telegram
-export {
-  listTelegramAccountIds,
-  resolveDefaultTelegramAccountId,
-  resolveTelegramAccount,
-  type ResolvedTelegramAccount,
-export {
-  looksLikeTelegramTargetId,
-  normalizeTelegramMessagingTarget,
-} from "../channels/plugins/normalize/telegram.js";
-
-// Channel: Signal
-export {
-  listSignalAccountIds,
-  resolveDefaultSignalAccountId,
-  resolveSignalAccount,
-  type ResolvedSignalAccount,
-export {
-  looksLikeSignalTargetId,
-  normalizeSignalMessagingTarget,
-} from "../channels/plugins/normalize/signal.js";
-
-export {
-export {
-} from "../channels/plugins/normalize/whatsapp.js";
-
 // Channel: BlueBubbles
 export { collectBlueBubblesStatusIssues } from "../channels/plugins/status-issues/bluebubbles.js";
-
-// Channel: LINE
-export {
-  listLineAccountIds,
-  normalizeAccountId as normalizeLineAccountId,
-  resolveDefaultLineAccountId,
-  resolveLineAccount,
-export type {
-  LineConfig,
-  LineAccountConfig,
-  ResolvedLineAccount,
-  LineChannelData,
-export {
-  createInfoCard,
-  createListCard,
-  createImageCard,
-  createActionCard,
-  createReceiptCard,
-  type CardAction,
-  type ListItem,
-export {
-  processLineMessage,
-  hasMarkdownToConvert,
-  stripMarkdown,
 
 // Media utilities
