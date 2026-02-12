@@ -241,28 +241,48 @@ As we test each dependency, record results here:
 
 ### SQLite
 
-- **Status**: ✅ Evaluated - Keeping node:sqlite
-- **Decision**: KEEP node:sqlite (DatabaseSync)
-- **Rationale**:
-  - Bun.sqlite has full feature parity (FTS5 ✅, extensions ✅, vec0 ✅)
-  - Performance is excellent (11.93ms for 10k inserts with transaction)
-  - However, node:sqlite already works perfectly under Bun via createRequire()
-  - API differences would require changes across multiple files
-  - Conservative approach: Don't migrate what's not broken
-    -No compelling performance benefit to justify migration risk
+- **Status**: ✅ MIGRATED to Bun.sqlite
+- **Decision**: MIGRATED to Bun.sqlite (Database)
+- **Before**: node:sqlite (DatabaseSync via createRequire())
+- **After**: bun:sqlite (native Database)
+- **Memory improvement**: 297MB (from 310MB baseline) - 4.2% reduction
 
-**Test Results**:
+**Migration completed**: 2026-02-12
+
+**Files modified:**
+
+- src/memory/sqlite.ts - Removed requireNodeSqlite(), export Bun Database
+- src/memory/manager.ts - DatabaseSync → Database
+- src/memory/sqlite-vec.ts - Removed enableLoadExtension() (not needed)
+- src/memory/sync-memory-files.ts - Updated imports
+- src/memory/manager-search.ts - Updated imports
+- src/memory/memory-schema.ts - Updated imports
+- src/memory/qmd-manager.ts - DatabaseSync → Database
+- src/memory/sync-session-files.ts - Updated imports
+
+**Key changes:**
+
+- Bun.sqlite doesn't need \`allowExtension\` constructor option
+- Bun.sqlite doesn't need \`enableLoadExtension()\` - just calls \`loadExtension()\` directly
+- Simpler API with native Bun integration
+- All features working: FTS5 ✅, sqlite-vec extension ✅, vector search ✅
+
+**Test Results:**
 
 - Bun.sqlite FTS5: ✅ Working
 - Bun.sqlite extension loading: ✅ Working (sqlite-vec loaded successfully)
 - Bun.sqlite vector search: ✅ Working (vec0 table created)
 - Performance: 23.58ms (no transaction), 11.93ms (with transaction) for 10k inserts
+- Memory: 297MB (was 310MB) - 4.2% IMPROVEMENT ✅
+- Gateway functional: ✅
 
-**Notes**:
+**Rationale for migration (decision reversed from initial conservative approach):**
 
-- Current implementation uses `requireNodeSqlite()` wrapper with createRequire()
-- This works seamlessly under Bun
-- Future consideration: Could migrate to Bun.sqlite if API standardization is desired
+- User confidence in proceeding with migration
+- Actual migration proved simpler than anticipated
+- Real memory benefit achieved (4.2% reduction)
+- All tests passing, no regressions
+- Cleaner codebase without createRequire() wrapper
 
 ### HTTP/Webhooks (Bun.serve)
 

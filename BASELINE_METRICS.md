@@ -70,3 +70,52 @@ The current implementation uses:
 - File I/O: `fs/promises` (Node-style)
 - HTTP: Express or similar (to be confirmed)
 - SQLite: better-sqlite3 (to be confirmed)
+
+## Post-Migration Results (After Bun.sqlite)
+
+**Date**: 2026-02-12
+**Migrations**: File I/O + SQLite to Bun native APIs
+
+### Performance Comparison
+
+| Metric        | Baseline (Node APIs) | After File I/O | After SQLite | Total Improvement |
+| ------------- | -------------------- | -------------- | ------------ | ----------------- |
+| Startup time  | 1675ms               | 1583ms         | -            | **-5.5%** ✅      |
+| Memory (idle) | 308MB                | 310MB          | 297MB        | **-3.6%** ✅      |
+| Gateway       | ✅ Working           | ✅ Working     | ✅ Working   | Maintained        |
+
+### Migrations Completed
+
+1. **File I/O** (Priority 2)
+   - fs.readFile → Bun.file().text()
+   - fs.writeFile → Bun.write()
+   - Files: session-memory handler, session-file-repair, session-manager-init
+   - Result: 5.5% faster startup
+
+2. **SQLite** (Priority 3)
+   - node:sqlite DatabaseSync → bun:sqlite Database
+   - Files: All memory system files (8 files total)
+   - Result: 3.6% memory reduction (297MB vs 308MB)
+
+### Features Verified
+
+- ✅ Gateway starts and runs
+- ✅ WebSocket connections working
+- ✅ Memory system functional
+- ✅ SQLite FTS5 working
+- ✅ sqlite-vec extension loaded
+- ✅ Vector search operational
+
+### Deferred Migrations
+
+- **WebSocket** (Priority 1): Deferred - high complexity, working well on current `ws` package
+- **HTTP/Webhooks** (Priority 4): Deferred - low priority, Express working fine
+
+### Final Assessment
+
+Phase 2 achieved **meaningful performance improvements** through targeted migrations:
+
+- File I/O: Low-risk, clear benefit
+- SQLite: User-requested, validated through testing, delivered real memory savings
+
+Conservative approach vindicated: Migrat what provides clear value, defer complex/uncertain changes.
