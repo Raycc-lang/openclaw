@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import { Database } from "bun:sqlite";
 import { truncateUtf16Safe } from "../utils.js";
 import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
@@ -18,7 +18,7 @@ export type SearchRowResult = {
 };
 
 export async function searchVector(params: {
-  db: DatabaseSync;
+  db: Database;
   vectorTable: string;
   providerModel: string;
   queryVec: number[];
@@ -94,7 +94,7 @@ export async function searchVector(params: {
 }
 
 export function listChunks(params: {
-  db: DatabaseSync;
+  db: Database;
   providerModel: string;
   sourceFilter: { sql: string; params: SearchSource[] };
 }): Array<{
@@ -134,7 +134,7 @@ export function listChunks(params: {
 }
 
 export async function searchKeyword(params: {
-  db: DatabaseSync;
+  db: Database;
   ftsTable: string;
   providerModel: string;
   query: string;

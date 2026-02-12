@@ -1,7 +1,7 @@
-import type { DatabaseSync } from "node:sqlite";
+import { Database } from "bun:sqlite";
 
 export async function loadSqliteVecExtension(params: {
-  db: DatabaseSync;
+  db: Database;
   extensionPath?: string;
 }): Promise<{ ok: boolean; extensionPath?: string; error?: string }> {
   try {
@@ -9,7 +9,7 @@ export async function loadSqliteVecExtension(params: {
     const resolvedPath = params.extensionPath?.trim() ? params.extensionPath.trim() : undefined;
     const extensionPath = resolvedPath ?? sqliteVec.getLoadablePath();
 
-    params.db.enableLoadExtension(true);
+    // Bun.sqlite doesn't need enableLoadExtension() - just call loadExtension() directly
     if (resolvedPath) {
       params.db.loadExtension(extensionPath);
     } else {

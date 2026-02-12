@@ -1,9 +1,14 @@
-import { createRequire } from "node:module";
-import { installProcessWarningFilter } from "../infra/warning-filter.js";
+/**
+ * Bun.sqlite database utilities
+ *
+ * Migrated from node:sqlite to Bun native sqlite for better performance
+ */
 
-const require = createRequire(import.meta.url);
+import { Database } from "bun:sqlite";
 
-export function requireNodeSqlite(): typeof import("node:sqlite") {
-  installProcessWarningFilter();
-  return require("node:sqlite") as typeof import("node:sqlite");
-}
+/**
+ * Export Database class from Bun.sqlite
+ * This replaces the previous requireNodeSqlite() pattern
+ */
+export { Database as BunDatabase };
+export type { Database };

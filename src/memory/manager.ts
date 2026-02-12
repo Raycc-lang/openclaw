@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import { Database } from "bun:sqlite";
 import chokidar, { type FSWatcher } from "chokidar";
 import { randomUUID } from "node:crypto";
 import fsSync from "node:fs";
@@ -55,7 +55,6 @@ import {
 import { searchKeyword, searchVector } from "./manager-search.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { loadSqliteVecExtension } from "./sqlite-vec.js";
-import { requireNodeSqlite } from "./sqlite.js";
 
 type MemoryIndexMeta = {
   model: string;
@@ -133,7 +132,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private batchFailureLastError?: string;
   private batchFailureLastProvider?: string;
   private batchFailureLock: Promise<void> = Promise.resolve();
-  private db: DatabaseSync;
+  private db: Database;
   private readonly sources: Set<MemorySource>;
   private providerKey: string;
   private readonly cache: { enabled: boolean; maxEntries?: number };
@@ -702,19 +701,20 @@ export class MemoryIndexManager implements MemorySearchManager {
     return { sql: ` AND ${column} IN (${placeholders})`, params: sources };
   }
 
-  private openDatabase(): DatabaseSync {
+  private openDatabase(): Database {
     const dbPath = resolveUserPath(this.settings.store.path);
     return this.openDatabaseAtPath(dbPath);
   }
 
-  private openDatabaseAtPath(dbPath: string): DatabaseSync {
+  private openDatabaseAtPath(dbPath: string): Database {
     const dir = path.dirname(dbPath);
     ensureDir(dir);
-    const { DatabaseSync } = requireNodeSqlite();
-    return new DatabaseSync(dbPath, { allowExtension: this.settings.store.vector.enabled });
+    // Bun.sqlite Database constructor - simpler than node:sqlite
+    // Extension loading is handled via db.loadExtension() method
+    return new Database(dbPath);
   }
 
-  private seedEmbeddingCache(sourceDb: DatabaseSync): void {
+  private seedEmbeddingCache(sourceDb: Database): void {
     if (!this.cache.enabled) {
       return;
     }
