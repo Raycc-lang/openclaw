@@ -279,17 +279,8 @@ async function resolveSlackNames(params: {
   accountId?: string | null;
   entries: string[];
 }) {
-  const token = account.config.userToken?.trim() || account.botToken?.trim();
-  if (!token) {
-    return new Map<string, string>();
-  }
-  const map = new Map<string, string>();
-  for (const entry of resolved) {
-    if (entry.resolved && entry.name) {
-      map.set(entry.input, entry.name);
-    }
-  }
-  return map;
+  // Slack channel removed in Phase 1 - stub function
+  return new Map<string, string>();
 }
 
 async function resolveDiscordNames(params: {
@@ -357,49 +348,25 @@ export const handleAllowlistCommand: CommandHandler = async (params, allowTextCo
     let groupPolicy: string | undefined;
 
     if (channelId === "telegram") {
-      dmAllowFrom = (account.config.allowFrom ?? []).map(String);
-      groupAllowFrom = (account.config.groupAllowFrom ?? []).map(String);
-      dmPolicy = account.config.dmPolicy;
-      groupPolicy = account.config.groupPolicy;
-      const groups = account.config.groups ?? {};
-      for (const [groupId, groupCfg] of Object.entries(groups)) {
-        const entries = (groupCfg?.allowFrom ?? []).map(String).filter(Boolean);
-        if (entries.length > 0) {
-          groupOverrides.push({ label: groupId, entries });
-        }
-        const topics = groupCfg?.topics ?? {};
-        for (const [topicId, topicCfg] of Object.entries(topics)) {
-          const topicEntries = (topicCfg?.allowFrom ?? []).map(String).filter(Boolean);
-          if (topicEntries.length > 0) {
-            groupOverrides.push({ label: `${groupId} topic ${topicId}`, entries: topicEntries });
-          }
-        }
-      }
+      // Telegram removed in Phase 1 - no config available
+      dmAllowFrom = [];
+      groupAllowFrom = [];
     } else if (channelId === "whatsapp") {
-      dmAllowFrom = (account.allowFrom ?? []).map(String);
-      groupAllowFrom = (account.groupAllowFrom ?? []).map(String);
-      dmPolicy = account.dmPolicy;
-      groupPolicy = account.groupPolicy;
+      // WhatsApp removed in Phase 1 - no config available
+      dmAllowFrom = [];
+      groupAllowFrom = [];
     } else if (channelId === "signal") {
-      dmAllowFrom = (account.config.allowFrom ?? []).map(String);
-      groupAllowFrom = (account.config.groupAllowFrom ?? []).map(String);
-      dmPolicy = account.config.dmPolicy;
-      groupPolicy = account.config.groupPolicy;
+      // Signal removed in Phase 1 - no config available
+      dmAllowFrom = [];
+      groupAllowFrom = [];
     } else if (channelId === "imessage") {
-      dmAllowFrom = (account.config.allowFrom ?? []).map(String);
-      groupAllowFrom = (account.config.groupAllowFrom ?? []).map(String);
-      dmPolicy = account.config.dmPolicy;
-      groupPolicy = account.config.groupPolicy;
+      // iMessage removed in Phase 1 - no config available
+      dmAllowFrom = [];
+      groupAllowFrom = [];
     } else if (channelId === "slack") {
-      dmAllowFrom = (account.dm?.allowFrom ?? []).map(String);
-      groupPolicy = account.groupPolicy;
-      const channels = account.channels ?? {};
-      groupOverrides = Object.entries(channels)
-        .map(([key, value]) => {
-          const entries = (value?.users ?? []).map(String).filter(Boolean);
-          return entries.length > 0 ? { label: key, entries } : null;
-        })
-        .filter(Boolean) as Array<{ label: string; entries: string[] }>;
+      // Slack removed in Phase 1 - no config available
+      dmAllowFrom = [];
+      groupAllowFrom = [];
     } else if (channelId === "discord") {
       const account = resolveDiscordAccount({ cfg: params.cfg, accountId });
       dmAllowFrom = (account.config.dm?.allowFrom ?? []).map(String);

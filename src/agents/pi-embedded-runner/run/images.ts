@@ -226,6 +226,14 @@ export async function loadImageFromRef(
       }
     }
 
+    // TODO: Phase 1 removed media loading functionality - needs restoration
+    // For now, return null for all image refs
+    log.debug(`Native image: media loading not implemented (Phase 1 stub): ${targetPath}`);
+    return null;
+
+    /* Original code - media loading function missing:
+    const media = await loadWebMedia(targetPath, options?.maxBytes);
+
     if (media.kind !== "image") {
       log.debug(`Native image: not an image file: ${targetPath} (got ${media.kind})`);
       return null;
@@ -236,6 +244,7 @@ export async function loadImageFromRef(
     const data = media.buffer.toString("base64");
 
     return { type: "image", data, mimeType };
+    */
   } catch (err) {
     // Log the actual error for debugging (size limits, network failures, etc.)
     log.debug(
