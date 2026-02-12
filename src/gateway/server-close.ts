@@ -1,3 +1,4 @@
+import type { Server as BunServer } from "bun";
 import type { Server as HttpServer } from "node:http";
 import type { WebSocketServer } from "ws";
 import type { CanvasHostHandler, CanvasHostServer } from "../canvas-host/server.js";
@@ -26,8 +27,9 @@ export function createGatewayCloseHandler(params: {
   clients: Set<{ socket: { close: (code: number, reason: string) => void } }>;
   configReloader: { stop: () => Promise<void> };
   browserControl: { stop: () => Promise<void> } | null;
-  wss: WebSocketServer;
-  httpServer: HttpServer;
+  bunServer?: BunServer;
+  wss?: WebSocketServer;
+  httpServer?: HttpServer;
   httpServers?: HttpServer[];
 }) {
   return async (opts?: { reason?: string; restartExpectedMs?: number | null }) => {
@@ -108,21 +110,29 @@ export function createGatewayCloseHandler(params: {
     if (params.browserControl) {
       await params.browserControl.stop().catch(() => {});
     }
-    await new Promise<void>((resolve) => params.wss.close(() => resolve()));
-    const servers =
-      params.httpServers && params.httpServers.length > 0
-        ? params.httpServers
-        : [params.httpServer];
-    for (const server of servers) {
-      const httpServer = server as HttpServer & {
-        closeIdleConnections?: () => void;
-      };
-      if (typeof httpServer.closeIdleConnections === "function") {
-        httpServer.closeIdleConnections();
+
+    // Close WebSocket and HTTP servers
+    if (params.bunServer) {
+      // Bun server closing (combines HTTP + WebSocket)
+      params.bunServer.stop();
+    } else if (params.wss && params.httpServer) {
+      // Old ws package closing (fallback)
+      await new Promise<void>((resolve) => params.wss!.close(() => resolve()));
+      const servers =
+        params.httpServers && params.httpServers.length > 0
+          ? params.httpServers
+          : [params.httpServer!];
+      for (const server of servers) {
+        const httpServer = server as HttpServer & {
+          closeIdleConnections?: () => void;
+        };
+        if (typeof httpServer.closeIdleConnections === "function") {
+          httpServer.closeIdleConnections();
+        }
+        await new Promise<void>((resolve, reject) =>
+          httpServer.close((err) => (err ? reject(err) : resolve())),
+        );
       }
-      await new Promise<void>((resolve, reject) =>
-        httpServer.close((err) => (err ? reject(err) : resolve())),
-      );
     }
   };
 }

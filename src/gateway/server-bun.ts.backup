@@ -1,0 +1,486 @@
+/**
+ * Bun.serve gateway server implementation
+ * Combines HTTP and WebSocket into single native Bun server
+ */
+
+import type { Server, ServerWebSocket } from "bun";
+import { randomUUID } from "node:crypto";
+import type { TlsOptions } from "node:tls";
+import type { CanvasHostHandler } from "../canvas-host/server.js";
+import type { createSubsystemLogger } from "../logging/subsystem.js";
+import type { ResolvedGatewayAuth } from "./auth.js";
+import type { ControlUiRootState } from "./control-ui.js";
+import type { GatewayRequestContext, GatewayRequestHandlers } from "./server-methods/types.js";
+import type { GatewayWsClient, GatewayWsData } from "./server/ws-types.js";
+import { resolveAgentAvatar } from "../agents/identity-avatar.js";
+import {
+  A2UI_PATH,
+  CANVAS_HOST_PATH,
+  CANVAS_WS_PATH,
+  handleA2uiHttpRequest,
+} from "../canvas-host/a2ui.js";
+import { loadConfig } from "../config/config.js";
+import { authorizeGatewayConnect, isLocalDirectRequest } from "./auth.js";
+import {
+  handleControlUiAvatarRequest,
+  handleControlUiHttpRequest,
+} from "./control-ui.js";
+import { sendUnauthorized } from "./http-common.js";
+import { getBearerToken, getHeader } from "./http-utils.js";
+import { resolveGatewayClientIp } from "./net.js";
+import { handleOpenAiHttpRequest } from "./openai-http.js";
+import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
+import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
+import { getHandshakeTimeoutMs } from "./server-constants.js";
+import { logWs } from "./ws-log.js";
+import { attachGatewayWsMessageHandler } from "./server/ws-connection/message-handler-bun.js";
+
+type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
+
+export type HooksRequestHandler = (req: Request) => Promise<Response | null>;
+
+function isCanvasPath(pathname: string): boolean {
+  return (
+    pathname === A2UI_PATH ||
+    pathname.startsWith(`${A2UI_PATH}/`) ||
+    pathname === CANVAS_HOST_PATH ||
+    pathname.startsWith(`${CANVAS_HOST_PATH}/`) ||
+    pathname === CANVAS_WS_PATH
+  );
+}
+
+function hasAuthorizedWsClientForIp(clients: Set<GatewayWsClient>, clientIp: string): boolean {
+  for (const client of clients) {
+    if (client.clientIp && client.clientIp === clientIp) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function authorizeCanvasRequest(params: {
+  req: Request;
+  auth: ResolvedGatewayAuth;
+  trustedProxies: string[];
+  clients: Set<GatewayWsClient>;
+  remoteAddr?: string;
+}): Promise<boolean> {
+  const { req, auth, trustedProxies, clients, remoteAddr } = params;
+
+  // Check if local request (simplified - Bun doesn't expose full socket details)
+  const url = new URL(req.url);
+  const hostname = url.hostname;
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return true;
+  }
+
+  const token = getBearerTokenFromRequest(req);
+  if (token) {
+    // For Bun, we need to create a minimal IncomingMessage-like object
+    const authResult = await authorizeGatewayConnect({
+      auth: { ...auth, allowTailscale: false },
+      connectAuth: { token, password: token },
+      req: createIncomingMessageStub(req, remoteAddr),
+      trustedProxies,
+    });
+    if (authResult.ok) {
+      return true;
+    }
+  }
+
+  const clientIp = resolveGatewayClientIp({
+    remoteAddr: remoteAddr ?? "",
+    forwardedFor: req.headers.get("x-forwarded-for") ?? undefined,
+    realIp: req.headers.get("x-real-ip") ?? undefined,
+    trustedProxies,
+  });
+  if (!clientIp) {
+    return false;
+  }
+  return hasAuthorizedWsClientForIp(clients, clientIp);
+}
+
+function getBearerTokenFromRequest(req: Request): string | null {
+  const auth = req.headers.get("authorization");
+  if (!auth) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(auth);
+  return match ? match[1] : null;
+}
+
+function createIncomingMessageStub(req: Request, remoteAddr?: string): any {
+  const url = new URL(req.url);
+  return {
+    headers: Object.fromEntries(req.headers.entries()),
+    url: req.url,
+    socket: {
+      remoteAddress: remoteAddr,
+    },
+  };
+}
+
+async function handleHttpRequest(params: {
+  req: Request;
+  canvasHost: CanvasHostHandler | null;
+  clients: Set<GatewayWsClient>;
+  controlUiEnabled: boolean;
+  controlUiBasePath: string;
+  controlUiRoot?: ControlUiRootState;
+  openAiChatCompletionsEnabled: boolean;
+  openResponsesEnabled: boolean;
+  openResponsesConfig?: import("../config/types.gateway.js").GatewayHttpResponsesConfig;
+  handleHooksRequest: HooksRequestHandler;
+  handlePluginRequest?: HooksRequestHandler;
+  resolvedAuth: ResolvedGatewayAuth;
+  remoteAddr?: string;
+}): Promise<Response> {
+  const {
+    req,
+    canvasHost,
+    clients,
+    controlUiEnabled,
+    controlUiBasePath,
+    controlUiRoot,
+    openAiChatCompletionsEnabled,
+    openResponsesEnabled,
+    openResponsesConfig,
+    handleHooksRequest,
+    handlePluginRequest,
+    resolvedAuth,
+    remoteAddr,
+  } = params;
+
+  const configSnapshot = loadConfig();
+  const trustedProxies = configSnapshot.gateway?.trustedProxies ?? [];
+
+  // Try hooks handler
+  const hooksResponse = await handleHooksRequest(req);
+  if (hooksResponse) {
+    return hooksResponse;
+  }
+
+  // Try plugin handler
+  if (handlePluginRequest) {
+    const pluginResponse = await handlePluginRequest(req);
+    if (pluginResponse) {
+      return pluginResponse;
+    }
+  }
+
+  // Try tools invoke
+  const toolsResponse = await handleToolsInvokeHttpRequestBun(req, {
+    auth: resolvedAuth,
+    trustedProxies,
+    remoteAddr,
+  });
+  if (toolsResponse) {
+    return toolsResponse;
+  }
+
+  // Try open responses
+  if (openResponsesEnabled) {
+    const openResponsesResponse = await handleOpenResponsesHttpRequestBun(req, {
+      auth: resolvedAuth,
+      config: openResponsesConfig,
+      trustedProxies,
+      remoteAddr,
+    });
+    if (openResponsesResponse) {
+      return openResponsesResponse;
+    }
+  }
+
+  // Try OpenAI
+  if (openAiChatCompletionsEnabled) {
+    const openAiResponse = await handleOpenAiHttpRequestBun(req, {
+      auth: resolvedAuth,
+      trustedProxies,
+      remoteAddr,
+    });
+    if (openAiResponse) {
+      return openAiResponse;
+    }
+  }
+
+  // Try canvas
+  if (canvasHost) {
+    const url = new URL(req.url);
+    if (isCanvasPath(url.pathname)) {
+      const ok = await authorizeCanvasRequest({
+        req,
+        auth: resolvedAuth,
+        trustedProxies,
+        clients,
+        remoteAddr,
+      });
+      if (!ok) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+    }
+    const a2uiResponse = await handleA2uiHttpRequestBun(req);
+    if (a2uiResponse) {
+      return a2uiResponse;
+    }
+    const canvasResponse = await canvasHost.handleHttpRequestBun?.(req);
+    if (canvasResponse) {
+      return canvasResponse;
+    }
+  }
+
+  // Try control UI
+  if (controlUiEnabled) {
+    const avatarResponse = handleControlUiAvatarRequestBun(req, {
+      basePath: controlUiBasePath,
+      resolveAvatar: (agentId) => resolveAgentAvatar(configSnapshot, agentId),
+    });
+    if (avatarResponse) {
+      return avatarResponse;
+    }
+    const controlUiResponse = handleControlUiHttpRequestBun(req, {
+      basePath: controlUiBasePath,
+      config: configSnapshot,
+      root: controlUiRoot,
+    });
+    if (controlUiResponse) {
+      return controlUiResponse;
+    }
+  }
+
+  return new Response("Not Found", { status: 404 });
+}
+
+// Stub adapters - these will need to be implemented or the original handlers adapted
+async function handleToolsInvokeHttpRequestBun(_req: Request, _opts: any): Promise<Response | null> {
+  // TODO: Adapt handleToolsInvokeHttpRequest to work with Request instead of IncomingMessage
+  return null;
+}
+
+async function handleOpenResponsesHttpRequestBun(_req: Request, _opts: any): Promise<Response | null> {
+  // TODO: Adapt handleOpenResponsesHttpRequest
+  return null;
+}
+
+async function handleOpenAiHttpRequestBun(_req: Request, _opts: any): Promise<Response | null> {
+  // TODO: Adapt handleOpenAiHttpRequest
+  return null;
+}
+
+async function handleA2uiHttpRequestBun(_req: Request): Promise<Response | null> {
+  // TODO: Adapt handleA2uiHttpRequest
+  return null;
+}
+
+function handleControlUiAvatarRequestBun(_req: Request, _opts: any): Response | null {
+  // TODO: Adapt handleControlUiAvatarRequest
+  return null;
+}
+
+function handleControlUiHttpRequestBun(_req: Request, _opts: any): Response | null {
+  // TODO: Adapt handleControlUiHttpRequest
+  return null;
+}
+
+export function createGatewayBunServer(opts: {
+  bindHost: string;
+  port: number;
+  canvasHost: CanvasHostHandler | null;
+  clients: Set<GatewayWsClient>;
+  controlUiEnabled: boolean;
+  controlUiBasePath: string;
+  controlUiRoot?: ControlUiRootState;
+  openAiChatCompletionsEnabled: boolean;
+  openResponsesEnabled: boolean;
+  openResponsesConfig?: import("../config/types.gateway.js").GatewayHttpResponsesConfig;
+  handleHooksRequest: HooksRequestHandler;
+  handlePluginRequest?: HooksRequestHandler;
+  resolvedAuth: ResolvedGatewayAuth;
+  tlsOptions?: TlsOptions;
+  gatewayHost?: string;
+  canvasHostEnabled: boolean;
+  canvasHostServerPort?: number;
+  gatewayMethods: string[];
+  events: string[];
+  logGateway: SubsystemLogger;
+  logHealth: SubsystemLogger;
+  logWsControl: SubsystemLogger;
+  extraHandlers: GatewayRequestHandlers;
+  broadcast: (
+    event: string,
+    payload: unknown,
+    opts?: {
+      dropIfSlow?: boolean;
+      stateVersion?: { presence?: number; health?: number };
+    },
+  ) => void;
+  buildRequestContext: () => GatewayRequestContext;
+}): Server {
+  const {
+    bindHost,
+    port,
+    canvasHost,
+    clients,
+    controlUiEnabled,
+    controlUiBasePath,
+    controlUiRoot,
+    openAiChatCompletionsEnabled,
+    openResponsesEnabled,
+    openResponsesConfig,
+    handleHooksRequest,
+    handlePluginRequest,
+    resolvedAuth,
+    tlsOptions,
+    gatewayHost,
+    canvasHostEnabled,
+    canvasHostServerPort,
+    gatewayMethods,
+    events,
+    logGateway,
+    logHealth,
+    logWsControl,
+    extraHandlers,
+    broadcast,
+    buildRequestContext,
+  } = opts;
+
+  const server = Bun.serve({
+    port,
+    hostname: bindHost,
+    tls: tlsOptions,
+
+    fetch(req, server) {
+      // Try WebSocket upgrade first
+      const url = new URL(req.url);
+      if (req.headers.get("upgrade") === "websocket") {
+        // Check if canvas WebSocket
+        if (url.pathname === CANVAS_WS_PATH && canvasHost) {
+          // Canvas WebSocket handled separately
+          // TODO: Implement canvas WebSocket upgrade
+        }
+
+        // Gateway WebSocket upgrade
+        const success = server.upgrade(req, {
+          data: {
+            connId: randomUUID(),
+            openedAt: Date.now(),
+            handshakeState: "pending" as const,
+            connectNonce: randomUUID(),
+            remoteAddr: server.requestIP(req)?.address,
+            requestHost: req.headers.get("host") ?? undefined,
+            requestOrigin: req.headers.get("origin") ?? undefined,
+            requestUserAgent: req.headers.get("user-agent") ?? undefined,
+            forwardedFor: req.headers.get("x-forwarded-for") ?? undefined,
+            realIp: req.headers.get("x-real-ip") ?? undefined,
+          } as GatewayWsData,
+        });
+
+        if (success) {
+          return; // Upgrade successful, will be handled by websocket.open
+        }
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      }
+
+      // Handle HTTP request
+      return handleHttpRequest({
+        req,
+        canvasHost,
+        clients,
+        controlUiEnabled,
+        controlUiBasePath,
+        controlUiRoot,
+        openAiChatCompletionsEnabled,
+        openResponsesEnabled,
+        openResponsesConfig,
+        handleHooksRequest,
+        handlePluginRequest,
+        resolvedAuth,
+        remoteAddr: server.requestIP(req)?.address,
+      });
+    },
+
+    websocket: {
+      open(ws: ServerWebSocket<GatewayWsData>) {
+        const data = ws.data;
+        const { connId, openedAt } = data;
+
+        logWs("in", "open", { connId, remoteAddr: data.remoteAddr });
+
+        // Send connect challenge
+        ws.send(JSON.stringify({
+          type: "event",
+          event: "connect.challenge",
+          payload: { nonce: data.connectNonce, ts: Date.now() },
+        }));
+
+        // Set handshake timeout
+        const handshakeTimeoutMs = getHandshakeTimeoutMs();
+        const handshakeTimer = setTimeout(() => {
+          if (!data.client) {
+            data.handshakeState = "failed";
+            data.closeCause = "handshake-timeout";
+            data.closeMeta = { handshakeMs: Date.now() - openedAt };
+            logWsControl.warn(`handshake timeout conn=${connId} remote=${data.remoteAddr ?? "?"}`);
+            ws.close(1000, "handshake timeout");
+          }
+        }, handshakeTimeoutMs);
+
+        data.handshakeTimer = handshakeTimer;
+
+        // Attach message handler
+        attachGatewayWsMessageHandler({
+          ws,
+          clients,
+          resolvedAuth,
+          gatewayMethods,
+          events,
+          extraHandlers,
+          buildRequestContext,
+          gatewayHost,
+          canvasHostEnabled,
+          canvasHostServerPort,
+          port,
+          logGateway,
+          logHealth,
+          logWsControl,
+          broadcast,
+        });
+      },
+
+      message(ws: ServerWebSocket<GatewayWsData>, message: string | Buffer) {
+        // Message handling delegated to message handler
+        const text = typeof message === "string" ? message : message.toString("utf-8");
+        ws.data.onMessage?.(text);
+      },
+
+      close(ws: ServerWebSocket<GatewayWsData>, code: number, reason: string) {
+        const data = ws.data;
+        const { connId, openedAt, client, closeCause, handshakeState } = data;
+
+        if (data.handshakeTimer) {
+          clearTimeout(data.handshakeTimer);
+        }
+
+        if (client) {
+          clients.delete(client);
+        }
+
+        const durationMs = Date.now() - openedAt;
+        logWs("out", "close", {
+          connId,
+          code,
+          reason,
+          durationMs,
+          cause: closeCause,
+          handshake: handshakeState,
+        });
+
+        data.onClose?.(code, reason);
+      },
+
+      drain(ws: ServerWebSocket<GatewayWsData>) {
+        // Called when bufferedAmount reaches zero after being > 0
+        // Useful for backpressure management
+      },
+    },
+  });
+
+  return server;
+}

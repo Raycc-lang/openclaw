@@ -62,6 +62,7 @@ import { createNodeSubscriptionManager } from "./server-node-subscriptions.js";
 import { loadGatewayPlugins } from "./server-plugins.js";
 import { createGatewayReloadHandlers } from "./server-reload-handlers.js";
 import { resolveGatewayRuntimeConfig } from "./server-runtime-config.js";
+import { createGatewayRuntimeStateBun } from "./server-runtime-state-bun.js";
 import { createGatewayRuntimeState } from "./server-runtime-state.js";
 import { resolveSessionKeyForRun } from "./server-session-key.js";
 import { logGatewayStartup } from "./server-startup-log.js";
@@ -310,12 +311,28 @@ export async function startGatewayServer(
   if (cfgAtStart.gateway?.tls?.enabled && !gatewayTls.enabled) {
     throw new Error(gatewayTls.error ?? "gateway tls: failed to enable");
   }
+
+  // Forward references that will be filled in after runtime state creation
+  let nodeRegistry: NodeRegistry = undefined as any;
+  let cronState: ReturnType<typeof buildGatewayCronService> = undefined as any;
+  let nodeSendToSession: any;
+  let nodeSendToAllSubscribed: any;
+  let nodeSubscribe: any;
+  let nodeUnsubscribe: any;
+  let nodeUnsubscribeAll: any;
+  let hasMobileNodeConnected: any;
+  let getRuntimeSnapshot: any;
+  let startChannels: any;
+  let startChannel: any;
+  let stopChannel: any;
+  let markChannelLoggedOut: any;
+  let broadcastVoiceWakeChanged: any;
+  const extraHandlersRef: { current: any } = { current: {} };
+
   const {
     canvasHost,
-    httpServer,
-    httpServers,
-    httpBindHosts,
-    wss,
+    bunServer,
+    httpBindHost,
     clients,
     broadcast,
     broadcastToConnIds,
@@ -328,7 +345,7 @@ export async function startGatewayServer(
     removeChatRun,
     chatAbortControllers,
     toolEventRecipients,
-  } = await createGatewayRuntimeState({
+  } = await createGatewayRuntimeStateBun({
     cfg: cfgAtStart,
     bindHost,
     port,
@@ -350,29 +367,77 @@ export async function startGatewayServer(
     log,
     logHooks,
     logPlugins,
+    logGateway: log,
+    logHealth,
+    logWsControl,
+    gatewayMethods,
+    events: GATEWAY_EVENTS,
+    extraHandlersRef,
+    buildRequestContext: () => ({
+      deps,
+      cron: cronState.cron,
+      cronStorePath: cronState.storePath,
+      loadGatewayModelCatalog,
+      getHealthCache,
+      refreshHealthSnapshot: refreshGatewayHealthSnapshot,
+      logHealth,
+      logGateway: log,
+      incrementPresenceVersion,
+      getHealthVersion,
+      broadcast,
+      broadcastToConnIds,
+      nodeSendToSession,
+      nodeSendToAllSubscribed,
+      nodeSubscribe,
+      nodeUnsubscribe,
+      nodeUnsubscribeAll,
+      hasConnectedMobileNode: hasMobileNodeConnected,
+      nodeRegistry,
+      agentRunSeq,
+      chatAbortControllers,
+      chatAbortedRuns: chatRunState.abortedRuns,
+      chatRunBuffers,
+      chatDeltaSentAt,
+      addChatRun,
+      removeChatRun,
+      registerToolEventRecipient: toolEventRecipients.add,
+      dedupe,
+      wizardSessions,
+      findRunningWizard,
+      purgeWizardSession,
+      getRuntimeSnapshot,
+      startChannel,
+      stopChannel,
+      markChannelLoggedOut,
+      wizardRunner,
+      broadcastVoiceWakeChanged,
+    }),
   });
+
+  // For compatibility with code that expects httpBindHosts array
+  const httpBindHosts = [httpBindHost];
   let bonjourStop: (() => Promise<void>) | null = null;
-  const nodeRegistry = new NodeRegistry();
+  nodeRegistry = new NodeRegistry();
   const nodePresenceTimers = new Map<string, ReturnType<typeof setInterval>>();
   const nodeSubscriptions = createNodeSubscriptionManager();
   const nodeSendEvent = (opts: { nodeId: string; event: string; payloadJSON?: string | null }) => {
     const payload = safeParseJson(opts.payloadJSON ?? null);
     nodeRegistry.sendEvent(opts.nodeId, opts.event, payload);
   };
-  const nodeSendToSession = (sessionKey: string, event: string, payload: unknown) =>
+  nodeSendToSession = (sessionKey: string, event: string, payload: unknown) =>
     nodeSubscriptions.sendToSession(sessionKey, event, payload, nodeSendEvent);
-  const nodeSendToAllSubscribed = (event: string, payload: unknown) =>
+  nodeSendToAllSubscribed = (event: string, payload: unknown) =>
     nodeSubscriptions.sendToAllSubscribed(event, payload, nodeSendEvent);
-  const nodeSubscribe = nodeSubscriptions.subscribe;
-  const nodeUnsubscribe = nodeSubscriptions.unsubscribe;
-  const nodeUnsubscribeAll = nodeSubscriptions.unsubscribeAll;
-  const broadcastVoiceWakeChanged = (triggers: string[]) => {
+  nodeSubscribe = nodeSubscriptions.subscribe;
+  nodeUnsubscribe = nodeSubscriptions.unsubscribe;
+  nodeUnsubscribeAll = nodeSubscriptions.unsubscribeAll;
+  broadcastVoiceWakeChanged = (triggers: string[]) => {
     broadcast("voicewake.changed", { triggers }, { dropIfSlow: true });
   };
-  const hasMobileNodeConnected = () => hasConnectedMobileNode(nodeRegistry);
+  hasMobileNodeConnected = () => hasConnectedMobileNode(nodeRegistry);
   applyGatewayLaneConcurrency(cfgAtStart);
 
-  let cronState = buildGatewayCronService({
+  cronState = buildGatewayCronService({
     cfg: cfgAtStart,
     deps,
     broadcast,
@@ -384,8 +449,8 @@ export async function startGatewayServer(
     channelLogs,
     channelRuntimeEnvs,
   });
-  const { getRuntimeSnapshot, startChannels, startChannel, stopChannel, markChannelLoggedOut } =
-    channelManager;
+  ({ getRuntimeSnapshot, startChannels, startChannel, stopChannel, markChannelLoggedOut } =
+    channelManager);
 
   const machineDisplayName = await getMachineDisplayName();
   const discovery = await startGatewayDiscovery({
@@ -467,66 +532,16 @@ export async function startGatewayServer(
     forwarder: execApprovalForwarder,
   });
 
+  // Fill in extraHandlersRef for WebSocket message handling
+  extraHandlersRef.current = {
+    ...pluginRegistry.gatewayHandlers,
+    ...execApprovalHandlers,
+  };
+
   const canvasHostServerPort = (canvasHostServer as CanvasHostServer | null)?.port;
 
-  attachGatewayWsHandlers({
-    wss,
-    clients,
-    port,
-    gatewayHost: bindHost ?? undefined,
-    canvasHostEnabled: Boolean(canvasHost),
-    canvasHostServerPort,
-    resolvedAuth,
-    gatewayMethods,
-    events: GATEWAY_EVENTS,
-    logGateway: log,
-    logHealth,
-    logWsControl,
-    extraHandlers: {
-      ...pluginRegistry.gatewayHandlers,
-      ...execApprovalHandlers,
-    },
-    broadcast,
-    context: {
-      deps,
-      cron,
-      cronStorePath,
-      loadGatewayModelCatalog,
-      getHealthCache,
-      refreshHealthSnapshot: refreshGatewayHealthSnapshot,
-      logHealth,
-      logGateway: log,
-      incrementPresenceVersion,
-      getHealthVersion,
-      broadcast,
-      broadcastToConnIds,
-      nodeSendToSession,
-      nodeSendToAllSubscribed,
-      nodeSubscribe,
-      nodeUnsubscribe,
-      nodeUnsubscribeAll,
-      hasConnectedMobileNode: hasMobileNodeConnected,
-      nodeRegistry,
-      agentRunSeq,
-      chatAbortControllers,
-      chatAbortedRuns: chatRunState.abortedRuns,
-      chatRunBuffers: chatRunState.buffers,
-      chatDeltaSentAt: chatRunState.deltaSentAt,
-      addChatRun,
-      removeChatRun,
-      registerToolEventRecipient: toolEventRecipients.add,
-      dedupe,
-      wizardSessions,
-      findRunningWizard,
-      purgeWizardSession,
-      getRuntimeSnapshot,
-      startChannel,
-      stopChannel,
-      markChannelLoggedOut,
-      wizardRunner,
-      broadcastVoiceWakeChanged,
-    },
-  });
+  // WebSocket handlers are now built into Bun.serve, no need for attachGatewayWsHandlers
+  // The handlers use buildRequestContext() which captures all the variables above
   logGatewayStartup({
     cfg: cfgAtStart,
     bindHost,
@@ -617,9 +632,10 @@ export async function startGatewayServer(
     clients,
     configReloader,
     browserControl,
-    wss,
-    httpServer,
-    httpServers,
+    bunServer,
+    wss: undefined,
+    httpServer: undefined,
+    httpServers: undefined,
   });
 
   return {
