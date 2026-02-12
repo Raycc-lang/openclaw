@@ -1,7 +1,5 @@
-import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 import type { GatewayServiceRuntime } from "./service-runtime.js";
 import { colorize, isRich, theme } from "../terminal/theme.js";
 import {
@@ -22,7 +20,6 @@ import {
   parseSystemdExecStart,
 } from "./systemd-unit.js";
 
-const execFileAsync = promisify(execFile);
 const toPosixPath = (value: string) => value.replace(/\\/g, "/");
 
 const formatLine = (label: string, value: string) => {
@@ -149,13 +146,12 @@ async function execSystemctl(
   args: string[],
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   try {
-    const { stdout, stderr } = await execFileAsync("systemctl", args, {
-      encoding: "utf8",
-    });
+    const env = buildSystemctlEnv(process.env);
+    const res = await execSystemctlImpl(args, env);
     return {
-      stdout: String(stdout ?? ""),
-      stderr: String(stderr ?? ""),
-      code: 0,
+      stdout: res.stdout,
+      stderr: res.stderr,
+      code: res.code,
     };
   } catch (error) {
     const e = error as {
@@ -171,6 +167,71 @@ async function execSystemctl(
       code: typeof e.code === "number" ? e.code : 1,
     };
   }
+}
+
+async function execSystemctlImpl(
+  args: string[],
+  env: Record<string, string | undefined> | undefined,
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  if (typeof Bun !== "undefined" && typeof Bun.spawn === "function") {
+    const proc = Bun.spawn(["systemctl", ...args], {
+      env: env as Record<string, string> | undefined,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return {
+      stdout: String(stdout ?? ""),
+      stderr: String(stderr ?? ""),
+      code: typeof code === "number" ? code : 0,
+    };
+  }
+
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileAsync = promisify(execFile) as (
+    file: string,
+    args: readonly string[],
+    options: { encoding: "utf8"; env?: Record<string, string | undefined> },
+  ) => Promise<{ stdout: string; stderr: string }>;
+
+  const { stdout, stderr } = await execFileAsync("systemctl", args, {
+    encoding: "utf8",
+    env,
+  });
+  return {
+    stdout: String(stdout ?? ""),
+    stderr: String(stderr ?? ""),
+    code: 0,
+  };
+}
+
+function buildSystemctlEnv(env: NodeJS.ProcessEnv): Record<string, string | undefined> | undefined {
+  const hasRuntimeDir = Boolean(env.XDG_RUNTIME_DIR);
+  const hasBusAddress = Boolean(env.DBUS_SESSION_BUS_ADDRESS);
+  if (hasRuntimeDir && hasBusAddress) {
+    return undefined;
+  }
+
+  // `systemctl --user` requires a reachable user bus. When running over SSH / non-login
+  // shells, pam_systemd may not populate these variables.
+  const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+  if (!uid || uid <= 0) {
+    return undefined;
+  }
+
+  const runtimeDir = env.XDG_RUNTIME_DIR || `/run/user/${uid}`;
+  const busAddress = env.DBUS_SESSION_BUS_ADDRESS || `unix:path=${runtimeDir}/bus`;
+
+  return {
+    ...env,
+    XDG_RUNTIME_DIR: runtimeDir,
+    DBUS_SESSION_BUS_ADDRESS: busAddress,
+  };
 }
 
 export async function isSystemdUserServiceAvailable(): Promise<boolean> {

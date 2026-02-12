@@ -3,7 +3,7 @@
  * This is a variant of createGatewayRuntimeState that uses Bun.serve instead of node:http + ws
  */
 
-import type { Server as BunServer } from "bun";
+import type { Server as BunBaseServer, TLSOptions as BunTLSOptions } from "bun";
 import type { CliDeps } from "../cli/deps.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import type { PluginRegistry } from "../plugins/registry.js";
@@ -14,7 +14,7 @@ import type { ControlUiRootState } from "./control-ui.js";
 import type { HooksConfigResolved } from "./hooks.js";
 import type { DedupeEntry } from "./server-shared.js";
 import type { GatewayTlsRuntime } from "./server/tls.js";
-import type { GatewayWsClient } from "./server/ws-types.js";
+import type { GatewayWsClient, GatewayWsData } from "./server/ws-types.js";
 import { resolveAgentAvatar } from "../agents/identity-avatar.js";
 import { CANVAS_HOST_PATH } from "../canvas-host/a2ui.js";
 import { type CanvasHostHandler, createCanvasHostHandler } from "../canvas-host/server.js";
@@ -28,6 +28,8 @@ import {
 } from "./server-chat.js";
 import { createGatewayHooksRequestHandler } from "./server/hooks.js";
 import { createGatewayPluginRequestHandler } from "./server/plugins-http.js";
+
+type BunServer = BunBaseServer<GatewayWsData>;
 
 export async function createGatewayRuntimeStateBun(params: {
   cfg: import("../config/config.js").OpenClawConfig;
@@ -178,7 +180,9 @@ export async function createGatewayRuntimeStateBun(params: {
     port: params.port,
     clients,
     resolvedAuth: params.resolvedAuth,
-    tlsOptions: params.gatewayTls?.enabled ? params.gatewayTls.tlsOptions : undefined,
+    tlsOptions: params.gatewayTls?.enabled
+      ? (params.gatewayTls.tlsOptions as unknown as BunTLSOptions)
+      : undefined,
     gatewayHost:
       params.bindHost !== "0.0.0.0" && params.bindHost !== "::" ? params.bindHost : undefined,
     canvasHostEnabled: params.canvasHostEnabled,
