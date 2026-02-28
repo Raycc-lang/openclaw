@@ -5,7 +5,15 @@ import type {
   SettingsListTheme,
 } from "@mariozechner/pi-tui";
 import chalk from "chalk";
-import { highlight, supportsLanguage } from "cli-highlight";
+
+let _cliHighlight: typeof import("cli-highlight") | null | undefined;
+// Pre-load module init (non-blocking)
+import("cli-highlight")
+  .then((m) => { _cliHighlight = m; })
+  .catch(() => { _cliHighlight = null; });
+
+function getCliHighlight() { return _cliHighlight ?? null; }
+
 import type { SearchableSelectListTheme } from "../components/searchable-select-list.js";
 import { createSyntaxTheme } from "./syntax-theme.js";
 

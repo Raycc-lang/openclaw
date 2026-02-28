@@ -7,7 +7,7 @@
     "miniagent": "workspace:*"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.1.26"
+    "miniagent": "workspace:*"
   },
   "openclaw": {
     "extensions": [

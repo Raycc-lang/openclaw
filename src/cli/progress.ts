@@ -1,5 +1,8 @@
 import { spinner } from "@clack/prompts";
-import { createOscProgressController, supportsOscProgress } from "osc-progress";
+let _oscMod: typeof import("osc-progress") | null | undefined;
+function getOscProgressSync() { return _oscMod ?? null; }
+// Pre-load at module init (non-blocking)
+import("osc-progress").then(m => { _oscMod = m; }).catch(() => { _oscMod = null; });
 import {
   clearActiveProgressLine,
   registerActiveProgressLine,
@@ -56,7 +59,8 @@ export function createCliProgress(options: ProgressOptions): ProgressReporter {
   }
 
   const delayMs = typeof options.delayMs === "number" ? options.delayMs : DEFAULT_DELAY_MS;
-  const canOsc = isTty && supportsOscProgress(process.env, isTty);
+  const oscMod = getOscProgressSync();
+  const canOsc = isTty && oscMod != null && oscMod.supportsOscProgress(process.env, isTty);
   const allowSpinner = isTty && (options.fallback === undefined || options.fallback === "spinner");
   const allowLine = isTty && options.fallback === "line";
 
@@ -73,8 +77,8 @@ export function createCliProgress(options: ProgressOptions): ProgressReporter {
     registerActiveProgressLine(stream);
   }
 
-  const controller = canOsc
-    ? createOscProgressController({
+  const controller = canOsc && oscMod
+    ? oscMod.createOscProgressController({
         env: process.env,
         isTty: stream.isTTY,
         write: (chunk: string) => stream.write(chunk),

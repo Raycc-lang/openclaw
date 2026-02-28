@@ -1,8 +1,6 @@
-import {
-  BedrockClient,
-  ListFoundationModelsCommand,
-  type ListFoundationModelsCommandOutput,
-} from "@aws-sdk/client-bedrock";
+type BedrockClientType = import("@aws-sdk/client-bedrock").BedrockClient;
+type ListFoundationModelsCommandType = import("@aws-sdk/client-bedrock").ListFoundationModelsCommand;
+type ListFoundationModelsCommandOutput = import("@aws-sdk/client-bedrock").ListFoundationModelsCommandOutput;
 import type { BedrockDiscoveryConfig, ModelDefinitionConfig } from "../config/types.js";
 
 const DEFAULT_REFRESH_INTERVAL_SECONDS = 3600;
@@ -174,11 +172,22 @@ export async function discoverBedrockModels(params: {
     }
   }
 
-  const clientFactory = params.clientFactory ?? ((region: string) => new BedrockClient({ region }));
+  let BedrockClientCtor: typeof import("@aws-sdk/client-bedrock").BedrockClient;
+  let ListFoundationModelsCommandCtor: typeof import("@aws-sdk/client-bedrock").ListFoundationModelsCommand;
+  try {
+    const mod = await import("@aws-sdk/client-bedrock");
+    BedrockClientCtor = mod.BedrockClient;
+    ListFoundationModelsCommandCtor = mod.ListFoundationModelsCommand;
+  } catch {
+    // Optional dependency not installed — skip Bedrock discovery.
+    return [];
+  }
+
+  const clientFactory = params.clientFactory ?? ((region: string) => new BedrockClientCtor({ region }));
   const client = clientFactory(params.region);
 
   const discoveryPromise = (async () => {
-    const response = await client.send(new ListFoundationModelsCommand({}));
+    const response = await client.send(new ListFoundationModelsCommandCtor({}));
     const discovered: ModelDefinitionConfig[] = [];
     for (const summary of response.modelSummaries ?? []) {
       if (!shouldIncludeSummary(summary, providerFilter)) {

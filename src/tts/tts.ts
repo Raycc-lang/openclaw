@@ -1,5 +1,5 @@
 import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
-import { EdgeTTS } from "node-edge-tts";
+let _EdgeTTS: typeof import("node-edge-tts").EdgeTTS | null | undefined;
 import {
   existsSync,
   mkdirSync,
@@ -1144,7 +1144,13 @@ async function edgeTTS(params: {
   timeoutMs: number;
 }): Promise<void> {
   const { text, outputPath, config, timeoutMs } = params;
-  const tts = new EdgeTTS({
+  if (_EdgeTTS === undefined) {
+    try { _EdgeTTS = (await import("node-edge-tts")).EdgeTTS; } catch { _EdgeTTS = null; }
+  }
+  if (!_EdgeTTS) {
+    throw new Error("Optional dependency node-edge-tts is not installed. Install it to use Edge TTS.");
+  }
+  const tts = new _EdgeTTS({
     voice: config.voice,
     lang: config.lang,
     outputFormat: config.outputFormat,
