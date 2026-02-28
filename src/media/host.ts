@@ -10,7 +10,7 @@ import { saveMediaSource } from "./store.js";
 const DEFAULT_PORT = 42873;
 const TTL_MS = 2 * 60 * 1000;
 
-let mediaServer: import("http").Server | null = null;
+let mediaServer: import("bun").Server | null = null;
 
 export type HostedMedia = {
   url: string;
