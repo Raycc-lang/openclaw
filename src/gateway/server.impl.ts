@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { Server as HttpServer } from "node:http";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
@@ -18,7 +19,6 @@ import {
   readConfigFileSnapshot,
   writeConfigFile,
 } from "../config/config.js";
-import { formatConfigIssueLines } from "../config/issue-format.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { resolveMainSessionKey } from "../config/sessions.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
@@ -33,6 +33,7 @@ import { createExecApprovalForwarder } from "../infra/exec-approval-forwarder.js
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner, type HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import { getMachineDisplayName } from "../infra/machine-name.js";
+import { startMemoryMonitor, stopMemoryMonitor } from "../infra/memory-monitor.js";
 import { ensureOpenClawCliOnPath } from "../infra/path-env.js";
 import { setGatewaySigusr1RestartPolicy, setPreRestartDeferralCheck } from "../infra/restart.js";
 import {
@@ -46,21 +47,14 @@ import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/di
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
-import { createPluginRuntime } from "../plugins/runtime/index.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
 import type { RuntimeEnv } from "../runtime.js";
-import type { CommandSecretAssignment } from "../secrets/command-config.js";
-import {
-  GATEWAY_AUTH_SURFACE_PATHS,
-  evaluateGatewayAuthSurfaceStates,
-} from "../secrets/runtime-gateway-auth-surfaces.js";
 import {
   activateSecretsRuntimeSnapshot,
   clearSecretsRuntimeSnapshot,
   getActiveSecretsRuntimeSnapshot,
   prepareSecretsRuntimeSnapshot,
-  resolveCommandSecretsFromActiveRuntimeSnapshot,
 } from "../secrets/runtime.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
@@ -92,13 +86,12 @@ import { createNodeSubscriptionManager } from "./server-node-subscriptions.js";
 import { loadGatewayPlugins } from "./server-plugins.js";
 import { createGatewayReloadHandlers } from "./server-reload-handlers.js";
 import { resolveGatewayRuntimeConfig } from "./server-runtime-config.js";
-import { createGatewayRuntimeState } from "./server-runtime-state.js";
+import { createGatewayRuntimeStateBun } from "./server-runtime-state-bun.js";
 import { resolveSessionKeyForRun } from "./server-session-key.js";
 import { logGatewayStartup } from "./server-startup-log.js";
 import { startGatewaySidecars } from "./server-startup.js";
 import { startGatewayTailscaleExposure } from "./server-tailscale.js";
 import { createWizardSessionTracker } from "./server-wizard-sessions.js";
-import { attachGatewayWsHandlers } from "./server-ws-runtime.js";
 import {
   getHealthCache,
   getHealthVersion,
@@ -113,6 +106,7 @@ import {
   mergeGatewayTailscaleConfig,
 } from "./startup-auth.js";
 import { maybeSeedControlUiAllowedOriginsAtStartup } from "./startup-control-ui-origins.js";
+import type { WebSocketServer } from "ws";
 
 export { __resetModelCatalogCacheForTest } from "./server-model-catalog.js";
 
@@ -277,18 +271,17 @@ export async function startGatewayServer(
     }
     const { config: migrated, changes } = migrateLegacyConfig(configSnapshot.parsed);
     if (!migrated) {
-      log.warn(
-        "gateway: legacy config entries detected but no auto-migration changes were produced; continuing with validation.",
+      throw new Error(
+        `Legacy config entries detected but auto-migration failed. Run "${formatCliCommand("openclaw doctor")}" to migrate.`,
       );
-    } else {
-      await writeConfigFile(migrated);
-      if (changes.length > 0) {
-        log.info(
-          `gateway: migrated legacy config entries:\n${changes
-            .map((entry) => `- ${entry}`)
-            .join("\n")}`,
-        );
-      }
+    }
+    await writeConfigFile(migrated);
+    if (changes.length > 0) {
+      log.info(
+        `gateway: migrated legacy config entries:\n${changes
+          .map((entry) => `- ${entry}`)
+          .join("\n")}`,
+      );
     }
   }
 
@@ -296,7 +289,9 @@ export async function startGatewayServer(
   if (configSnapshot.exists && !configSnapshot.valid) {
     const issues =
       configSnapshot.issues.length > 0
-        ? formatConfigIssueLines(configSnapshot.issues, "", { normalizeRoot: true }).join("\n")
+        ? configSnapshot.issues
+            .map((issue) => `${issue.path || "<root>"}: ${issue.message}`)
+            .join("\n")
         : "Unknown validation issue.";
     throw new Error(
       `Invalid config at ${configSnapshot.path}.\n${issues}\nRun "${formatCliCommand("openclaw doctor")}" to repair, then retry.`,
@@ -346,7 +341,6 @@ export async function startGatewayServer(
         const prepared = await prepareSecretsRuntimeSnapshot({ config });
         if (params.activate) {
           activateSecretsRuntimeSnapshot(prepared);
-          logGatewayAuthSurfaceDiagnostics(prepared);
         }
         for (const warning of prepared.warnings) {
           logSecrets.warn(`[${warning.code}] ${warning.message}`);
@@ -390,7 +384,9 @@ export async function startGatewayServer(
     if (!freshSnapshot.valid) {
       const issues =
         freshSnapshot.issues.length > 0
-          ? formatConfigIssueLines(freshSnapshot.issues, "", { normalizeRoot: true }).join("\n")
+          ? freshSnapshot.issues
+              .map((issue) => `${issue.path || "<root>"}: ${issue.message}`)
+              .join("\n")
           : "Unknown validation issue.";
       throw new Error(`Invalid config at ${freshSnapshot.path}.\n${issues}`);
     }
@@ -437,6 +433,16 @@ export async function startGatewayServer(
   if (diagnosticsEnabled) {
     startDiagnosticHeartbeat();
   }
+  startMemoryMonitor({
+    checkInterval: 60_000,
+    logEvery: 1,
+    thresholds: {
+      warning: 850,
+      critical: 900,
+      emergency: 950,
+    },
+    emergencyShutdown: false,
+  });
   setGatewaySigusr1RestartPolicy({ allowExternal: isRestartEnabled(cfgAtStart) });
   setPreRestartDeferralCheck(
     () => getTotalQueueSize() + getTotalPendingReplies() + getActiveEmbeddedRunCount(),
@@ -490,7 +496,6 @@ export async function startGatewayServer(
     openAiChatCompletionsConfig,
     openResponsesEnabled,
     openResponsesConfig,
-    strictTransportSecurityHeader,
     controlUiBasePath,
     controlUiRoot: controlUiRootOverride,
     resolvedAuth,
@@ -546,12 +551,35 @@ export async function startGatewayServer(
   if (cfgAtStart.gateway?.tls?.enabled && !gatewayTls.enabled) {
     throw new Error(gatewayTls.error ?? "gateway tls: failed to enable");
   }
+  const execApprovalManager = new ExecApprovalManager();
+  // Bun gateway handlers capture these via buildRequestContext; initialize as forward refs.
+  let cronState: ReturnType<typeof buildGatewayCronService> = undefined as any;
+  let cron: ReturnType<typeof buildGatewayCronService>["cron"] = undefined as any;
+  let cronStorePath: string = "";
+  let nodeRegistry: NodeRegistry = undefined as any;
+  let nodeSendToSession: (sessionKey: string, event: string, payload: unknown) => void =
+    undefined as any;
+  let nodeSendToAllSubscribed: (event: string, payload: unknown) => void = undefined as any;
+  let nodeSubscribe: ReturnType<typeof createNodeSubscriptionManager>["subscribe"] =
+    undefined as any;
+  let nodeUnsubscribe: ReturnType<typeof createNodeSubscriptionManager>["unsubscribe"] =
+    undefined as any;
+  let nodeUnsubscribeAll: ReturnType<typeof createNodeSubscriptionManager>["unsubscribeAll"] =
+    undefined as any;
+  let hasMobileNodeConnected: () => boolean = () => false;
+  let getRuntimeSnapshot: ReturnType<typeof createChannelManager>["getRuntimeSnapshot"] =
+    undefined as any;
+  let startChannels: ReturnType<typeof createChannelManager>["startChannels"] = undefined as any;
+  let startChannel: ReturnType<typeof createChannelManager>["startChannel"] = undefined as any;
+  let stopChannel: ReturnType<typeof createChannelManager>["stopChannel"] = undefined as any;
+  let markChannelLoggedOut: ReturnType<typeof createChannelManager>["markChannelLoggedOut"] =
+    undefined as any;
+  let broadcastVoiceWakeChanged: (triggers: string[]) => void = undefined as any;
+  const extraHandlersRef: { current: Record<string, unknown> } = { current: {} };
   const {
     canvasHost,
-    httpServer,
-    httpServers,
-    httpBindHosts,
-    wss,
+    bunServer,
+    httpBindHost,
     clients,
     broadcast,
     broadcastToConnIds,
@@ -564,7 +592,7 @@ export async function startGatewayServer(
     removeChatRun,
     chatAbortControllers,
     toolEventRecipients,
-  } = await createGatewayRuntimeState({
+  } = await createGatewayRuntimeStateBun({
     cfg: cfgAtStart,
     bindHost,
     port,
@@ -575,9 +603,7 @@ export async function startGatewayServer(
     openAiChatCompletionsConfig,
     openResponsesEnabled,
     openResponsesConfig,
-    strictTransportSecurityHeader,
     resolvedAuth,
-    rateLimiter: authRateLimiter,
     gatewayTls,
     hooksConfig: () => hooksConfig,
     pluginRegistry,
@@ -589,43 +615,118 @@ export async function startGatewayServer(
     log,
     logHooks,
     logPlugins,
+    logGateway: log,
+    logHealth,
+    logWsControl,
+    gatewayMethods,
+    events: GATEWAY_EVENTS,
+    extraHandlersRef,
+    buildRequestContext: () => ({
+      deps,
+      cron,
+      cronStorePath,
+      execApprovalManager,
+      loadGatewayModelCatalog,
+      getHealthCache,
+      refreshHealthSnapshot: refreshGatewayHealthSnapshot,
+      logHealth,
+      logGateway: log,
+      incrementPresenceVersion,
+      getHealthVersion,
+      broadcast,
+      broadcastToConnIds,
+      nodeSendToSession,
+      nodeSendToAllSubscribed,
+      nodeSubscribe,
+      nodeUnsubscribe,
+      nodeUnsubscribeAll,
+      hasConnectedMobileNode: hasMobileNodeConnected,
+      nodeRegistry,
+      agentRunSeq,
+      chatAbortControllers,
+      chatAbortedRuns: chatRunState.abortedRuns,
+      chatRunBuffers,
+      chatDeltaSentAt,
+      addChatRun,
+      removeChatRun,
+      registerToolEventRecipient: toolEventRecipients.add,
+      dedupe,
+      wizardSessions,
+      findRunningWizard,
+      purgeWizardSession,
+      startWizard: wizardRunner,
+      getRuntimeSnapshot,
+      startChannels,
+      startChannel,
+      stopChannel,
+      markChannelLoggedOut,
+      wizardRunner,
+      secrets: {
+        prepareRuntimeSnapshot: prepareSecretsRuntimeSnapshot,
+        activateRuntimeSnapshot: activateSecretsRuntimeSnapshot,
+        clearRuntimeSnapshot: clearSecretsRuntimeSnapshot,
+      },
+      gatewayHost: bindHost,
+      gatewayPort: port,
+      broadcastVoiceWakeChanged,
+      getMainSessionKey: resolveMainSessionKey,
+      runtimeConfig,
+      getTotalQueueSize,
+      getActiveEmbeddedRunCount,
+      getTotalPendingReplies,
+    }),
   });
+  // Bun close shims so existing close handler can shut down cleanly without ws/node:http server instances.
+  const httpServer = {
+    closeIdleConnections: () => {},
+    close: (cb?: (err?: Error) => void) => {
+      try {
+        bunServer.stop(true);
+        cb?.();
+      } catch (err) {
+        cb?.(err instanceof Error ? err : new Error(String(err)));
+      }
+      return httpServer as unknown as HttpServer;
+    },
+  } as unknown as HttpServer;
+  const httpServers = [httpServer];
+  const httpBindHosts = [httpBindHost];
+  const wss = { close: (cb?: () => void) => cb?.() } as unknown as WebSocketServer;
   let bonjourStop: (() => Promise<void>) | null = null;
-  const nodeRegistry = new NodeRegistry();
+  nodeRegistry = new NodeRegistry();
   const nodePresenceTimers = new Map<string, ReturnType<typeof setInterval>>();
   const nodeSubscriptions = createNodeSubscriptionManager();
   const nodeSendEvent = (opts: { nodeId: string; event: string; payloadJSON?: string | null }) => {
     const payload = safeParseJson(opts.payloadJSON ?? null);
     nodeRegistry.sendEvent(opts.nodeId, opts.event, payload);
   };
-  const nodeSendToSession = (sessionKey: string, event: string, payload: unknown) =>
+  nodeSendToSession = (sessionKey: string, event: string, payload: unknown) =>
     nodeSubscriptions.sendToSession(sessionKey, event, payload, nodeSendEvent);
-  const nodeSendToAllSubscribed = (event: string, payload: unknown) =>
+  nodeSendToAllSubscribed = (event: string, payload: unknown) =>
     nodeSubscriptions.sendToAllSubscribed(event, payload, nodeSendEvent);
-  const nodeSubscribe = nodeSubscriptions.subscribe;
-  const nodeUnsubscribe = nodeSubscriptions.unsubscribe;
-  const nodeUnsubscribeAll = nodeSubscriptions.unsubscribeAll;
-  const broadcastVoiceWakeChanged = (triggers: string[]) => {
+  nodeSubscribe = nodeSubscriptions.subscribe;
+  nodeUnsubscribe = nodeSubscriptions.unsubscribe;
+  nodeUnsubscribeAll = nodeSubscriptions.unsubscribeAll;
+  broadcastVoiceWakeChanged = (triggers: string[]) => {
     broadcast("voicewake.changed", { triggers }, { dropIfSlow: true });
   };
-  const hasMobileNodeConnected = () => hasConnectedMobileNode(nodeRegistry);
+  hasMobileNodeConnected = () => hasConnectedMobileNode(nodeRegistry);
   applyGatewayLaneConcurrency(cfgAtStart);
 
-  let cronState = buildGatewayCronService({
+  cronState = buildGatewayCronService({
     cfg: cfgAtStart,
     deps,
     broadcast,
   });
-  let { cron, storePath: cronStorePath } = cronState;
+  ({ cron, storePath: cronStorePath } = cronState);
 
   const channelManager = createChannelManager({
     loadConfig,
     channelLogs,
     channelRuntimeEnvs,
-    channelRuntime: createPluginRuntime().channel,
   });
-  const { getRuntimeSnapshot, startChannels, startChannel, stopChannel, markChannelLoggedOut } =
-    channelManager;
+  ({ getRuntimeSnapshot, startChannels, startChannel, stopChannel, markChannelLoggedOut } =
+    channelManager);
 
   if (!minimalTestGateway) {
     const machineDisplayName = await getMachineDisplayName();
@@ -722,7 +823,7 @@ export async function startGatewayServer(
 
   const healthCheckMinutes = cfgAtStart.gateway?.channelHealthCheckMinutes;
   const healthCheckDisabled = healthCheckMinutes === 0;
-  let channelHealthMonitor = healthCheckDisabled
+  const channelHealthMonitor = healthCheckDisabled
     ? null
     : startChannelHealthMonitor({
         channelManager,
@@ -747,7 +848,6 @@ export async function startGatewayServer(
     })().catch((err) => log.error(`Delivery recovery failed: ${String(err)}`));
   }
 
-  const execApprovalManager = new ExecApprovalManager();
   const execApprovalForwarder = createExecApprovalForwarder();
   const execApprovalHandlers = createExecApprovalHandlers(execApprovalManager, {
     forwarder: execApprovalForwarder,
@@ -764,94 +864,13 @@ export async function startGatewayServer(
       });
       return { warningCount: prepared.warnings.length };
     },
-    resolveSecrets: async ({ commandName, targetIds }) => {
-      const { assignments, diagnostics, inactiveRefPaths } =
-        resolveCommandSecretsFromActiveRuntimeSnapshot({
-          commandName,
-          targetIds: new Set(targetIds),
-        });
-      if (assignments.length === 0) {
-        return { assignments: [] as CommandSecretAssignment[], diagnostics, inactiveRefPaths };
-      }
-      return { assignments, diagnostics, inactiveRefPaths };
-    },
   });
 
-  const canvasHostServerPort = (canvasHostServer as CanvasHostServer | null)?.port;
-
-  attachGatewayWsHandlers({
-    wss,
-    clients,
-    port,
-    gatewayHost: bindHost ?? undefined,
-    canvasHostEnabled: Boolean(canvasHost),
-    canvasHostServerPort,
-    resolvedAuth,
-    rateLimiter: authRateLimiter,
-    browserRateLimiter: browserAuthRateLimiter,
-    gatewayMethods,
-    events: GATEWAY_EVENTS,
-    logGateway: log,
-    logHealth,
-    logWsControl,
-    extraHandlers: {
-      ...pluginRegistry.gatewayHandlers,
-      ...execApprovalHandlers,
-      ...secretsHandlers,
-    },
-    broadcast,
-    context: {
-      deps,
-      cron,
-      cronStorePath,
-      execApprovalManager,
-      loadGatewayModelCatalog,
-      getHealthCache,
-      refreshHealthSnapshot: refreshGatewayHealthSnapshot,
-      logHealth,
-      logGateway: log,
-      incrementPresenceVersion,
-      getHealthVersion,
-      broadcast,
-      broadcastToConnIds,
-      nodeSendToSession,
-      nodeSendToAllSubscribed,
-      nodeSubscribe,
-      nodeUnsubscribe,
-      nodeUnsubscribeAll,
-      hasConnectedMobileNode: hasMobileNodeConnected,
-      hasExecApprovalClients: () => {
-        for (const gatewayClient of clients) {
-          const scopes = Array.isArray(gatewayClient.connect.scopes)
-            ? gatewayClient.connect.scopes
-            : [];
-          if (scopes.includes("operator.admin") || scopes.includes("operator.approvals")) {
-            return true;
-          }
-        }
-        return false;
-      },
-      nodeRegistry,
-      agentRunSeq,
-      chatAbortControllers,
-      chatAbortedRuns: chatRunState.abortedRuns,
-      chatRunBuffers: chatRunState.buffers,
-      chatDeltaSentAt: chatRunState.deltaSentAt,
-      addChatRun,
-      removeChatRun,
-      registerToolEventRecipient: toolEventRecipients.add,
-      dedupe,
-      wizardSessions,
-      findRunningWizard,
-      purgeWizardSession,
-      getRuntimeSnapshot,
-      startChannel,
-      stopChannel,
-      markChannelLoggedOut,
-      wizardRunner,
-      broadcastVoiceWakeChanged,
-    },
-  });
+  extraHandlersRef.current = {
+    ...pluginRegistry.gatewayHandlers,
+    ...execApprovalHandlers,
+    ...secretsHandlers,
+  };
   logGatewayStartup({
     cfg: cfgAtStart,
     bindHost,
@@ -918,7 +937,6 @@ export async function startGatewayServer(
             heartbeatRunner,
             cronState,
             browserControl,
-            channelHealthMonitor,
           }),
           setState: (nextState) => {
             hooksConfig = nextState.hooksConfig;
@@ -927,7 +945,6 @@ export async function startGatewayServer(
             cron = cronState.cron;
             cronStorePath = cronState.storePath;
             browserControl = nextState.browserControl;
-            channelHealthMonitor = nextState.channelHealthMonitor;
           },
           startChannel,
           stopChannel,
@@ -936,8 +953,6 @@ export async function startGatewayServer(
           logChannels,
           logCron,
           logReload,
-          createHealthMonitor: (checkIntervalMs: number) =>
-            startChannelHealthMonitor({ channelManager, checkIntervalMs }),
         });
 
         return startGatewayConfigReloader({
@@ -1007,6 +1022,7 @@ export async function startGatewayServer(
         ctx: { port },
         onError: (err) => log.warn(`gateway_stop hook failed: ${String(err)}`),
       });
+      stopMemoryMonitor();
       if (diagnosticsEnabled) {
         stopDiagnosticHeartbeat();
       }

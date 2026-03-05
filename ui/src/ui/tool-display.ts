@@ -1,9 +1,10 @@
-import SHARED_TOOL_DISPLAY_JSON from "../../../apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json" with { type: "json" };
+import SHARED_TOOL_DISPLAY_JSON from "./tool-display.json" with { type: "json" };
 import {
   defaultTitle,
   formatToolDetailText,
   normalizeToolName,
-  resolveToolVerbAndDetailForArgs,
+  resolveActionArg,
+  resolveToolVerbAndDetail,
   type ToolDisplaySpec as ToolDisplaySpecBase,
 } from "../../../src/agents/tool-display-common.js";
 import type { IconName } from "./icons.ts";
@@ -125,10 +126,12 @@ export function resolveToolDisplay(params: {
   const icon = (spec?.icon ?? FALLBACK.icon ?? "puzzle") as IconName;
   const title = spec?.title ?? defaultTitle(name);
   const label = spec?.label ?? title;
-  let { verb, detail } = resolveToolVerbAndDetailForArgs({
+  const action = resolveActionArg(params.args);
+  let { verb, detail } = resolveToolVerbAndDetail({
     toolKey: key,
     args: params.args,
     meta: params.meta,
+    action,
     spec,
     fallbackDetailKeys: FALLBACK.detailKeys,
     detailMode: "first",

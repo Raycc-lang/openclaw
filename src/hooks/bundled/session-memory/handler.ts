@@ -11,7 +11,6 @@ import path from "node:path";
 import { resolveAgentWorkspaceDir } from "../../../agents/agent-scope.js";
 import type { OpenClawConfig } from "../../../config/config.js";
 import { resolveStateDir } from "../../../config/paths.js";
-import { writeFileWithinRoot } from "../../../infra/fs-safe.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { resolveAgentIdFromSessionKey } from "../../../routing/session-key.js";
 import { hasInterSessionUserProvenance } from "../../../sessions/input-provenance.js";
@@ -29,7 +28,9 @@ async function getRecentSessionContent(
   messageCount: number = 15,
 ): Promise<string | null> {
   try {
-    const content = await fs.readFile(sessionFilePath, "utf-8");
+    const bun = (globalThis as { Bun?: { file: (path: string) => { text: () => Promise<string> } } })
+      .Bun;
+    const content = bun ? await bun.file(sessionFilePath).text() : await fs.readFile(sessionFilePath, "utf-8");
     const lines = content.trim().split("\n");
 
     // Parse JSONL and extract user/assistant messages first
@@ -306,13 +307,14 @@ const saveSessionToMemory: HookHandler = async (event) => {
 
     const entry = entryParts.join("\n");
 
-    // Write under memory root with alias-safe file validation.
-    await writeFileWithinRoot({
-      rootDir: memoryDir,
-      relativePath: filename,
-      data: entry,
-      encoding: "utf-8",
-    });
+    // Write to new memory file
+    const bun = (globalThis as { Bun?: { write: (path: string, data: string) => Promise<number> } })
+      .Bun;
+    if (bun) {
+      await bun.write(memoryFilePath, entry);
+    } else {
+      await fs.writeFile(memoryFilePath, entry, "utf-8");
+    }
     log.debug("Memory file written successfully");
 
     // Log completion (but don't send user-visible confirmation - it's internal housekeeping)

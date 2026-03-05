@@ -1,4 +1,4 @@
-import SHARED_TOOL_DISPLAY_JSON from "../../apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json" with { type: "json" };
+import SHARED_TOOL_DISPLAY_JSON from "./tool-display.json" with { type: "json" };
 import { redactToolDetail } from "../logging/redact.js";
 import { shortenHomeInString } from "../utils.js";
 import {
@@ -6,7 +6,8 @@ import {
   formatToolDetailText,
   formatDetailKey,
   normalizeToolName,
-  resolveToolVerbAndDetailForArgs,
+  resolveActionArg,
+  resolveToolVerbAndDetail,
   type ToolDisplaySpec as ToolDisplaySpecBase,
 } from "./tool-display-common.js";
 import TOOL_DISPLAY_OVERRIDES_JSON from "./tool-display-overrides.json" with { type: "json" };
@@ -66,10 +67,12 @@ export function resolveToolDisplay(params: {
   const emoji = spec?.emoji ?? FALLBACK.emoji ?? "🧩";
   const title = spec?.title ?? defaultTitle(name);
   const label = spec?.label ?? title;
-  let { verb, detail } = resolveToolVerbAndDetailForArgs({
+  const action = resolveActionArg(params.args);
+  let { verb, detail } = resolveToolVerbAndDetail({
     toolKey: key,
     args: params.args,
     meta: params.meta,
+    action,
     spec,
     fallbackDetailKeys: FALLBACK.detailKeys,
     detailMode: "summary",
@@ -93,7 +96,7 @@ export function resolveToolDisplay(params: {
 
 export function formatToolDetail(display: ToolDisplay): string | undefined {
   const detailRaw = display.detail ? redactToolDetail(display.detail) : undefined;
-  return formatToolDetailText(detailRaw);
+  return formatToolDetailText(detailRaw, { prefixWithWith: true });
 }
 
 export function formatToolSummary(display: ToolDisplay): string {

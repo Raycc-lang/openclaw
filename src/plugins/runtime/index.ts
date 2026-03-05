@@ -1,15 +1,95 @@
 import { createRequire } from "node:module";
-import { resolveStateDir } from "../../config/paths.js";
-import { transcribeAudioFile } from "../../media-understanding/transcribe-audio.js";
-import { textToSpeechTelephony } from "../../tts/tts.js";
-import { createRuntimeChannel } from "./runtime-channel.js";
-import { createRuntimeConfig } from "./runtime-config.js";
-import { createRuntimeEvents } from "./runtime-events.js";
-import { createRuntimeLogging } from "./runtime-logging.js";
-import { createRuntimeMedia } from "./runtime-media.js";
-import { createRuntimeSystem } from "./runtime-system.js";
-import { createRuntimeTools } from "./runtime-tools.js";
 import type { PluginRuntime } from "./types.js";
+import { resolveEffectiveMessagesConfig, resolveHumanDelayConfig } from "../../agents/identity.js";
+import { createMemoryGetTool, createMemorySearchTool } from "../../agents/tools/memory-tool.js";
+import {
+  chunkByNewline,
+  chunkMarkdownText,
+  chunkMarkdownTextWithMode,
+  chunkText,
+  chunkTextWithMode,
+  resolveChunkMode,
+  resolveTextChunkLimit,
+} from "../../auto-reply/chunk.js";
+import {
+  hasControlCommand,
+  isControlCommandMessage,
+  shouldComputeCommandAuthorized,
+} from "../../auto-reply/command-detection.js";
+import { shouldHandleTextCommands } from "../../auto-reply/commands-registry.js";
+import { withReplyDispatcher } from "../../auto-reply/dispatch.js";
+import {
+  formatAgentEnvelope,
+  formatInboundEnvelope,
+  resolveEnvelopeFormatOptions,
+} from "../../auto-reply/envelope.js";
+import {
+  createInboundDebouncer,
+  resolveInboundDebounceMs,
+} from "../../auto-reply/inbound-debounce.js";
+import { dispatchReplyFromConfig } from "../../auto-reply/reply/dispatch-from-config.js";
+import { finalizeInboundContext } from "../../auto-reply/reply/inbound-context.js";
+import {
+  buildMentionRegexes,
+  matchesMentionPatterns,
+  matchesMentionWithExplicit,
+} from "../../auto-reply/reply/mentions.js";
+import { dispatchReplyWithBufferedBlockDispatcher } from "../../auto-reply/reply/provider-dispatcher.js";
+import { createReplyDispatcherWithTyping } from "../../auto-reply/reply/reply-dispatcher.js";
+import { removeAckReactionAfterReply, shouldAckReaction } from "../../channels/ack-reactions.js";
+import { resolveCommandAuthorizedFromAuthorizers } from "../../channels/command-gating.js";
+import { discordMessageActions } from "../../channels/plugins/actions/discord.js";
+import { recordInboundSession } from "../../channels/session.js";
+import { registerMemoryCli } from "../../cli/memory-cli.js";
+import { loadConfig, writeConfigFile } from "../../config/config.js";
+import {
+  resolveChannelGroupPolicy,
+  resolveChannelGroupRequireMention,
+} from "../../config/group-policy.js";
+import { resolveMarkdownTableMode } from "../../config/markdown-tables.js";
+import { resolveStateDir } from "../../config/paths.js";
+import {
+  readSessionUpdatedAt,
+  recordSessionMetaFromInbound,
+  resolveStorePath,
+  updateLastRoute,
+} from "../../config/sessions.js";
+import { auditDiscordChannelPermissions } from "../../discord/audit.js";
+import {
+  listDiscordDirectoryGroupsLive,
+  listDiscordDirectoryPeersLive,
+} from "../../discord/directory-live.js";
+import { monitorDiscordProvider } from "../../discord/monitor.js";
+import { probeDiscord } from "../../discord/probe.js";
+import { resolveDiscordChannelAllowlist } from "../../discord/resolve-channels.js";
+import { resolveDiscordUserAllowlist } from "../../discord/resolve-users.js";
+import { sendMessageDiscord, sendPollDiscord } from "../../discord/send.js";
+import { shouldLogVerbose } from "../../globals.js";
+import { getChannelActivity, recordChannelActivity } from "../../infra/channel-activity.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
+import { getChildLogger } from "../../logging.js";
+import { normalizeLogLevel } from "../../logging/levels.js";
+import { convertMarkdownTables } from "../../markdown/tables.js";
+import { isVoiceCompatibleAudio } from "../../media/audio.js";
+import { mediaKindFromMime } from "../../media/constants.js";
+import { fetchRemoteMedia } from "../../media/fetch.js";
+import { getImageMetadata, resizeToJpeg } from "../../media/image-ops.js";
+import { detectMime } from "../../media/mime.js";
+import { saveMediaBuffer } from "../../media/store.js";
+import { buildPairingReply } from "../../pairing/pairing-messages.js";
+import {
+  readChannelAllowFromStore,
+  upsertChannelPairingRequest,
+} from "../../pairing/pairing-store.js";
+import { runCommandWithTimeout } from "../../process/exec.js";
+import { resolveAgentRoute } from "../../routing/resolve-route.js";
+import { textToSpeechTelephony } from "../../tts/tts.js";
+import { formatNativeDependencyHint } from "./native-deps.js";
+
+// Stub for removed loadWebMedia function (WhatsApp Web removed in miniAgent)
+const loadWebMedia = async () => {
+  throw new Error("loadWebMedia not available in miniAgent (WhatsApp Web removed)");
+};
 
 let cachedVersion: string | null = null;
 
@@ -29,21 +109,135 @@ function resolveVersion(): string {
 }
 
 export function createPluginRuntime(): PluginRuntime {
-  const runtime = {
+  return {
     version: resolveVersion(),
-    config: createRuntimeConfig(),
-    system: createRuntimeSystem(),
-    media: createRuntimeMedia(),
-    tts: { textToSpeechTelephony },
-    stt: { transcribeAudioFile },
-    tools: createRuntimeTools(),
-    channel: createRuntimeChannel(),
-    events: createRuntimeEvents(),
-    logging: createRuntimeLogging(),
-    state: { resolveStateDir },
-  } satisfies PluginRuntime;
-
-  return runtime;
+    config: {
+      loadConfig,
+      writeConfigFile,
+    },
+    system: {
+      enqueueSystemEvent,
+      runCommandWithTimeout,
+      formatNativeDependencyHint,
+    },
+    media: {
+      loadWebMedia,
+      detectMime,
+      mediaKindFromMime,
+      isVoiceCompatibleAudio,
+      getImageMetadata,
+      resizeToJpeg,
+    },
+    tts: {
+      textToSpeechTelephony,
+    },
+    tools: {
+      createMemoryGetTool,
+      createMemorySearchTool,
+      registerMemoryCli,
+    },
+    channel: {
+      text: {
+        chunkByNewline,
+        chunkMarkdownText,
+        chunkMarkdownTextWithMode,
+        chunkText,
+        chunkTextWithMode,
+        resolveChunkMode,
+        resolveTextChunkLimit,
+        hasControlCommand,
+        resolveMarkdownTableMode,
+        convertMarkdownTables,
+      },
+      reply: {
+        dispatchReplyWithBufferedBlockDispatcher,
+        createReplyDispatcherWithTyping,
+        resolveEffectiveMessagesConfig,
+        resolveHumanDelayConfig,
+        dispatchReplyFromConfig,
+        withReplyDispatcher,
+        finalizeInboundContext,
+        formatAgentEnvelope,
+        formatInboundEnvelope,
+        resolveEnvelopeFormatOptions,
+      },
+      routing: {
+        resolveAgentRoute,
+      },
+      pairing: {
+        buildPairingReply,
+        readAllowFromStore: readChannelAllowFromStore,
+        upsertPairingRequest: upsertChannelPairingRequest,
+      },
+      media: {
+        fetchRemoteMedia,
+        saveMediaBuffer,
+      },
+      activity: {
+        record: recordChannelActivity,
+        get: getChannelActivity,
+      },
+      session: {
+        resolveStorePath,
+        readSessionUpdatedAt,
+        recordSessionMetaFromInbound,
+        recordInboundSession,
+        updateLastRoute,
+      },
+      mentions: {
+        buildMentionRegexes,
+        matchesMentionPatterns,
+        matchesMentionWithExplicit,
+      },
+      reactions: {
+        shouldAckReaction,
+        removeAckReactionAfterReply,
+      },
+      groups: {
+        resolveGroupPolicy: resolveChannelGroupPolicy,
+        resolveRequireMention: resolveChannelGroupRequireMention,
+      },
+      debounce: {
+        createInboundDebouncer,
+        resolveInboundDebounceMs,
+      },
+      commands: {
+        resolveCommandAuthorizedFromAuthorizers,
+        isControlCommandMessage,
+        shouldComputeCommandAuthorized,
+        shouldHandleTextCommands,
+      },
+      discord: {
+        messageActions: discordMessageActions,
+        auditChannelPermissions: auditDiscordChannelPermissions,
+        listDirectoryGroupsLive: listDiscordDirectoryGroupsLive,
+        listDirectoryPeersLive: listDiscordDirectoryPeersLive,
+        probeDiscord,
+        resolveChannelAllowlist: resolveDiscordChannelAllowlist,
+        resolveUserAllowlist: resolveDiscordUserAllowlist,
+        sendMessageDiscord,
+        sendPollDiscord,
+        monitorDiscordProvider,
+      },
+    },
+    logging: {
+      shouldLogVerbose,
+      getChildLogger: (bindings: Record<string, unknown>, opts?: { level?: string }) => {
+        const logger = getChildLogger(bindings, {
+          level: opts?.level ? normalizeLogLevel(opts.level) : undefined,
+        });
+        return {
+          debug: (message: string) => logger.debug?.(message),
+          info: (message: string) => logger.info(message),
+          warn: (message: string) => logger.warn(message),
+          error: (message: string) => logger.error(message),
+        };
+      },
+    },
+    state: {
+      resolveStateDir,
+    },
+  } as unknown as PluginRuntime;
 }
 
 export type { PluginRuntime } from "./types.js";

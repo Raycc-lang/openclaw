@@ -27,7 +27,9 @@ export async function repairSessionFileIfNeeded(params: {
 
   let content: string;
   try {
-    content = await fs.readFile(sessionFile, "utf-8");
+    const bun = (globalThis as { Bun?: { file: (path: string) => { text: () => Promise<string> } } })
+      .Bun;
+    content = bun ? await bun.file(sessionFile).text() : await fs.readFile(sessionFile, "utf-8");
   } catch (err) {
     const code = (err as { code?: unknown } | undefined)?.code;
     if (code === "ENOENT") {
@@ -74,11 +76,21 @@ export async function repairSessionFileIfNeeded(params: {
   const tmpPath = `${sessionFile}.repair-${process.pid}-${Date.now()}.tmp`;
   try {
     const stat = await fs.stat(sessionFile).catch(() => null);
-    await fs.writeFile(backupPath, content, "utf-8");
+    const bun = (globalThis as { Bun?: { write: (path: string, data: string) => Promise<number> } })
+      .Bun;
+    if (bun) {
+      await bun.write(backupPath, content);
+    } else {
+      await fs.writeFile(backupPath, content, "utf-8");
+    }
     if (stat) {
       await fs.chmod(backupPath, stat.mode);
     }
-    await fs.writeFile(tmpPath, cleaned, "utf-8");
+    if (bun) {
+      await bun.write(tmpPath, cleaned);
+    } else {
+      await fs.writeFile(tmpPath, cleaned, "utf-8");
+    }
     if (stat) {
       await fs.chmod(tmpPath, stat.mode);
     }
