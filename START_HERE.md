@@ -19,7 +19,7 @@
 ```bash
 cd /home/ray/miniAgent/_fresh-rebase
 pnpm install
-bun src/index.ts gateway --bind loopback --port 18789
+OPENCLAW_SKIP_CANVAS_HOST=1 OPENCLAW_SKIP_UPDATE_CHECK=1 bun --smol src/index.ts gateway --bind loopback --port 18789
 ```
 
 In another shell:

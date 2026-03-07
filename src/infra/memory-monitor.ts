@@ -33,9 +33,9 @@ export class MemoryMonitor {
       checkInterval: config.checkInterval ?? 60000,
       logEvery: config.logEvery ?? 1,
       thresholds: {
-        warning: config.thresholds?.warning ?? 850,
-        critical: config.thresholds?.critical ?? 900,
-        emergency: config.thresholds?.emergency ?? 950,
+        warning: config.thresholds?.warning ?? 600,
+        critical: config.thresholds?.critical ?? 750,
+        emergency: config.thresholds?.emergency ?? 850,
       },
       autoGc: config.autoGc ?? true,
       emergencyShutdown: config.emergencyShutdown ?? false,
