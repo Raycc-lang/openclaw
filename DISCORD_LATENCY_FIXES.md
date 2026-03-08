@@ -96,6 +96,7 @@ Focused regression coverage added:
 
 - `src/discord/monitor/message-handler.queue.test.ts`
 - `src/discord/monitor/message-handler.process.test.ts`
+- `src/discord/monitor/message-handler.bot-self-filter.test.ts`
 
 New regression coverage specifically proves that:
 
@@ -105,13 +106,26 @@ New regression coverage specifically proves that:
 Local validation used for this fix:
 
 ```bash
-pnpm vitest src/discord/monitor/message-handler.process.test.ts src/discord/monitor/message-handler.queue.test.ts --run
+pnpm vitest src/discord/monitor/message-handler.process.test.ts src/discord/monitor/message-handler.queue.test.ts src/discord/monitor/message-handler.bot-self-filter.test.ts --run
 ```
 
 `pnpm check` is currently blocked by existing repository-wide formatting issues in unrelated pre-existing files outside this change set.
 
+## 2026-03-09 follow-up instrumentation
+
+The pre-enqueue timeout path now has first-class timing diagnostics:
+
+- `src/discord/monitor/message-handler.ts`
+  - logs preflight duration
+  - logs debounce flush duration
+  - logs total handler-to-enqueue duration
+  - emits a visible slow-pre-enqueue log once the pre-enqueue phase crosses 30 seconds
+
+- `src/gateway/protocol/schema/channels.ts`
+- `src/channels/plugins/types.core.ts`
+  - thread the new queue metrics through shared channel snapshot types so status consumers can read them
+
 ## Remaining follow-up
 
-1. Instrument the pre-enqueue 120 second timeout path with explicit timing around debounce flush and preflight.
-2. Consider whether any unbound Discord cases can safely narrow queue keys further without breaking shared-session semantics.
-3. Surface queue metrics in the monitor UI or logs used during live incident response.
+1. Consider whether any unbound Discord cases can safely narrow queue keys further without breaking shared-session semantics.
+2. Surface queue metrics in the monitor UI or richer status views used during live incident response.

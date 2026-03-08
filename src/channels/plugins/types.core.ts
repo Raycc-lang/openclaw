@@ -123,6 +123,10 @@ export type ChannelAccountSnapshot = {
   busy?: boolean;
   activeRuns?: number;
   lastRunActivityAt?: number | null;
+  queuedRuns?: number;
+  currentQueueKey?: string | null;
+  currentMessageId?: string | number | null;
+  lastQueueWaitMs?: number | null;
   mode?: string;
   dmPolicy?: string;
   allowFrom?: string[];

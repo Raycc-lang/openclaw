@@ -232,6 +232,40 @@ describe("createDiscordMessageHandler queue behavior", () => {
     }
   });
 
+  it("logs slow pre-enqueue preflight timing before the worker enqueue boundary", async () => {
+    vi.useFakeTimers();
+    try {
+      preflightDiscordMessageMock.mockReset();
+      processDiscordMessageMock.mockReset();
+
+      preflightDiscordMessageMock.mockImplementationOnce(async () => {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 31_000);
+        });
+        return createPreflightContext("ch-1");
+      });
+      processDiscordMessageMock.mockResolvedValue(undefined);
+
+      const params = createHandlerParams();
+      const handlerPromise = createDiscordMessageHandler(params)(
+        createMessageData("m-slow") as never,
+        {} as never,
+      );
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      await handlerPromise;
+
+      expect(params.runtime.log).toHaveBeenCalledWith(
+        expect.stringContaining("discord slow pre-enqueue preflight:"),
+      );
+      expect(params.runtime.log).toHaveBeenCalledWith(
+        expect.stringContaining("discord slow pre-enqueue handler-to-enqueue:"),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not time out queued runs when the inbound worker timeout is disabled", async () => {
     vi.useFakeTimers();
     try {
