@@ -11,7 +11,7 @@ vi.mock("./message-handler.preflight.js", () => ({
 }));
 
 vi.mock("./message-handler.process.js", () => ({
-  processDiscordMessage: processDiscordMessageMock,
+  processDiscordMessageSerializedPhase: processDiscordMessageMock,
 }));
 
 const { createDiscordMessageHandler } = await import("./message-handler.js");

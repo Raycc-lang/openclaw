@@ -24,6 +24,14 @@ function createMockDraftStream() {
   };
 }
 
+function createDeferred<T = void>() {
+  let resolve: (value: T | PromiseLike<T>) => void = () => {};
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}
+
 const deliveryMocks = vi.hoisted(() => ({
   editMessageDiscord: vi.fn(async () => ({})),
   deliverDiscordReply: vi.fn(async () => {}),
@@ -33,6 +41,7 @@ const editMessageDiscord = deliveryMocks.editMessageDiscord;
 const deliverDiscordReply = deliveryMocks.deliverDiscordReply;
 const createDiscordDraftStream = deliveryMocks.createDiscordDraftStream;
 type DispatchInboundParams = {
+  ctx?: { SessionKey?: string; MessageThreadId?: string | number };
   dispatcher: {
     sendBlockReply: (payload: {
       text?: string;
@@ -51,7 +60,7 @@ type DispatchInboundParams = {
     onAssistantMessageStart?: () => Promise<void> | void;
   };
 };
-const dispatchInboundMessage = vi.fn(async (_params?: DispatchInboundParams) => ({
+const dispatchReplyFromConfig = vi.fn(async (_params?: DispatchInboundParams) => ({
   queuedFinal: false,
   counts: { final: 0, tool: 0, block: 0 },
 }));
@@ -80,8 +89,8 @@ vi.mock("./reply-delivery.js", () => ({
   deliverDiscordReply: deliveryMocks.deliverDiscordReply,
 }));
 
-vi.mock("../../auto-reply/dispatch.js", () => ({
-  dispatchInboundMessage,
+vi.mock("../../auto-reply/reply/dispatch-from-config.js", () => ({
+  dispatchReplyFromConfig,
 }));
 
 vi.mock("../../auto-reply/reply/reply-dispatcher.js", () => ({
@@ -117,7 +126,8 @@ vi.mock("../../config/sessions.js", () => ({
   resolveStorePath: configSessionsMocks.resolveStorePath,
 }));
 
-const { processDiscordMessage } = await import("./message-handler.process.js");
+const { processDiscordMessage, processDiscordMessageSerializedPhase } =
+  await import("./message-handler.process.js");
 
 const createBaseContext = createBaseDiscordMessageContext;
 const BASE_CHANNEL_ROUTE = {
@@ -129,7 +139,7 @@ const BASE_CHANNEL_ROUTE = {
 } as const;
 
 function mockDispatchSingleBlockReply(payload: { text: string; isReasoning?: boolean }) {
-  dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+  dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
     await params?.dispatcher.sendBlockReply(payload);
     return { queuedFinal: false, counts: { final: 0, tool: 0, block: 1 } };
   });
@@ -152,11 +162,11 @@ beforeEach(() => {
   editMessageDiscord.mockClear();
   deliverDiscordReply.mockClear();
   createDiscordDraftStream.mockClear();
-  dispatchInboundMessage.mockClear();
+  dispatchReplyFromConfig.mockClear();
   recordInboundSession.mockClear();
   readSessionUpdatedAt.mockClear();
   resolveStorePath.mockClear();
-  dispatchInboundMessage.mockResolvedValue(createNoQueuedDispatchResult());
+  dispatchReplyFromConfig.mockResolvedValue(createNoQueuedDispatchResult());
   recordInboundSession.mockResolvedValue(undefined);
   readSessionUpdatedAt.mockReturnValue(undefined);
   resolveStorePath.mockReturnValue("/tmp/openclaw-discord-process-test-sessions.json");
@@ -183,7 +193,7 @@ function getLastRouteUpdate():
 function getLastDispatchCtx():
   | { SessionKey?: string; MessageThreadId?: string | number }
   | undefined {
-  const callArgs = dispatchInboundMessage.mock.calls.at(-1) as unknown[] | undefined;
+  const callArgs = dispatchReplyFromConfig.mock.calls.at(-1) as unknown[] | undefined;
   const params = callArgs?.[0] as
     | { ctx?: { SessionKey?: string; MessageThreadId?: string | number } }
     | undefined;
@@ -273,7 +283,7 @@ describe("processDiscordMessage ack reactions", () => {
   });
 
   it("debounces intermediate phase reactions and jumps to done for short runs", async () => {
-    dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+    dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
       await params?.replyOptions?.onReasoningStream?.();
       await params?.replyOptions?.onToolStart?.({ name: "exec" });
       return createNoQueuedDispatchResult();
@@ -297,7 +307,7 @@ describe("processDiscordMessage ack reactions", () => {
     const dispatchGate = new Promise<void>((resolve) => {
       releaseDispatch = () => resolve();
     });
-    dispatchInboundMessage.mockImplementationOnce(async () => {
+    dispatchReplyFromConfig.mockImplementationOnce(async () => {
       await dispatchGate;
       return createNoQueuedDispatchResult();
     });
@@ -320,7 +330,7 @@ describe("processDiscordMessage ack reactions", () => {
   });
 
   it("applies status reaction emoji/timing overrides from config", async () => {
-    dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+    dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
       await params?.replyOptions?.onReasoningStream?.();
       return createNoQueuedDispatchResult();
     });
@@ -348,7 +358,7 @@ describe("processDiscordMessage ack reactions", () => {
 
   it("clears status reactions when dispatch aborts and removeAckAfterReply is enabled", async () => {
     const abortController = new AbortController();
-    dispatchInboundMessage.mockImplementationOnce(async () => {
+    dispatchReplyFromConfig.mockImplementationOnce(async () => {
       abortController.abort();
       throw new Error("aborted");
     });
@@ -457,7 +467,7 @@ describe("processDiscordMessage session routing", () => {
 
 describe("processDiscordMessage draft streaming", () => {
   async function runSingleChunkFinalScenario(discordConfig: Record<string, unknown>) {
-    dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+    dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
       await params?.dispatcher.sendFinalReply({ text: "Hello\nWorld" });
       return { queuedFinal: true, counts: { final: 1, tool: 0, block: 0 } };
     });
@@ -510,7 +520,7 @@ describe("processDiscordMessage draft streaming", () => {
   });
 
   it("suppresses reasoning-tagged final payload delivery to Discord", async () => {
-    dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+    dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
       await params?.dispatcher.sendFinalReply({
         text: "Reasoning:\nthis should stay internal",
         isReasoning: true,
@@ -537,7 +547,7 @@ describe("processDiscordMessage draft streaming", () => {
   it("streams block previews using draft chunking", async () => {
     const draftStream = createMockDraftStreamForTest();
 
-    dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+    dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
       await params?.replyOptions?.onPartialReply?.({ text: "HelloWorld" });
       return createNoQueuedDispatchResult();
     });
@@ -554,7 +564,7 @@ describe("processDiscordMessage draft streaming", () => {
   it("forces new preview messages on assistant boundaries in block mode", async () => {
     const draftStream = createMockDraftStreamForTest();
 
-    dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+    dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
       await params?.replyOptions?.onPartialReply?.({ text: "Hello" });
       await params?.replyOptions?.onAssistantMessageStart?.();
       return createNoQueuedDispatchResult();
@@ -571,7 +581,7 @@ describe("processDiscordMessage draft streaming", () => {
   it("strips reasoning tags from partial stream updates", async () => {
     const draftStream = createMockDraftStreamForTest();
 
-    dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+    dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
       await params?.replyOptions?.onPartialReply?.({
         text: "<thinking>Let me think about this</thinking>\nThe answer is 42",
       });
@@ -589,7 +599,7 @@ describe("processDiscordMessage draft streaming", () => {
   it("skips pure-reasoning partial updates without updating draft", async () => {
     const draftStream = createMockDraftStreamForTest();
 
-    dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+    dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
       await params?.replyOptions?.onPartialReply?.({
         text: "Reasoning:\nThe user asked about X so I need to consider Y",
       });
@@ -599,5 +609,30 @@ describe("processDiscordMessage draft streaming", () => {
     await runInPartialStreamMode();
 
     expect(draftStream.update).not.toHaveBeenCalled();
+  });
+
+  it("releases the serialized phase before slow Discord delivery settles", async () => {
+    const deliveryGate = createDeferred();
+    deliverDiscordReply.mockImplementationOnce(async () => {
+      await deliveryGate.promise;
+    });
+    dispatchReplyFromConfig.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+      await params?.dispatcher.sendFinalReply({ text: "Hello\nWorld" });
+      return { queuedFinal: true, counts: { final: 1, tool: 0, block: 0 } };
+    });
+
+    const ctx = await createBaseContext({
+      discordConfig: { streamMode: "off" },
+    });
+
+    const serializedPhasePromise = processDiscordMessageSerializedPhase(ctx as never);
+
+    await vi.waitFor(() => {
+      expect(deliverDiscordReply).toHaveBeenCalledTimes(1);
+    });
+    await expect(serializedPhasePromise).resolves.toBeUndefined();
+
+    deliveryGate.resolve();
+    await deliveryGate.promise;
   });
 });

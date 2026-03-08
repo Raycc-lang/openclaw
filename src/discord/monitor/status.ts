@@ -16,6 +16,10 @@ export type DiscordMonitorStatusPatch = {
   busy?: boolean;
   activeRuns?: number;
   lastRunActivityAt?: number | null;
+  queuedRuns?: number;
+  currentQueueKey?: string | null;
+  currentMessageId?: string | null;
+  lastQueueWaitMs?: number | null;
 };
 
 export type DiscordMonitorStatusSink = (patch: DiscordMonitorStatusPatch) => void;

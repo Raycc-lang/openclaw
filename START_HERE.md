@@ -1,14 +1,17 @@
 # START_HERE
 
 ## What this repo is
+
 `miniAgent` is a customized OpenClaw fork focused on Discord-first operation and low-memory VPS stability.
 
 ## Branches and directories you need to know
+
 - Main working tree: `/home/ray/miniAgent`
 - Fresh upstream integration tree: `/home/ray/miniAgent/_fresh-rebase`
 - Current fresh-upstream branch: `miniagent/fresh-upstream-2026-3-2`
 
 ## Current status (2026-03-03)
+
 - Bun gateway path is enabled in `_fresh-rebase` (`Bun.serve` runtime state wired in `src/gateway/server.impl.ts`).
 - Bun hot-path file I/O is enabled (with Node fallback for tests):
   - `src/hooks/bundled/session-memory/handler.ts`
@@ -16,6 +19,7 @@
 - Non-Discord channels are removed from eager runtime loading in `src/plugins/runtime/index.ts`.
 
 ## Quick start
+
 ```bash
 cd /home/ray/miniAgent/_fresh-rebase
 pnpm install
@@ -23,50 +27,104 @@ OPENCLAW_SKIP_CANVAS_HOST=1 OPENCLAW_SKIP_UPDATE_CHECK=1 bun --smol src/index.ts
 ```
 
 In another shell:
+
 ```bash
 cd /home/ray/miniAgent/_fresh-rebase
 bun src/index.ts channels status --probe
 ```
 
 ## Useful validation commands
+
 ```bash
 cd /home/ray/miniAgent/_fresh-rebase
 pnpm vitest src/gateway/server-bun.test.ts src/agents/session-file-repair.test.ts src/hooks/bundled/session-memory/handler.test.ts --run
 ```
 
 ## Known environment note
+
 You may see stale config warnings for removed plugins (for example `google-antigravity-auth`).
 These are config hygiene warnings, not gateway startup blockers.
 
-## Discord latency fixes (2026-03-08)
+## Discord latency fixes
 
-Three patches landed to fix ~5-minute reply delays on Discord:
+Discord latency investigations and fixes are tracked in `DISCORD_LATENCY_FIXES.md`.
 
-### 1. Dedicated Discord inbound lane
-Live Discord user messages now run on a `discord-inbound` lane instead of sharing the global `main` lane with cron, heartbeat, and CLI work. This prevents background tasks from blocking user-facing replies.
+Current state:
 
-- `src/process/lanes.ts` — new `CommandLane.DiscordInbound`
-- `src/gateway/server-lanes.ts` / `src/gateway/server-reload-handlers.ts` — lane concurrency (inherits `agents.defaults.maxConcurrent`)
-- `src/auto-reply/reply/get-reply-run.ts:509` — routes Discord turns onto the new lane
-- `src/auto-reply/reply/queue/types.ts`, `agent-runner-utils.ts`, `followup-runner.ts` — threads `lane` through followup queue
+- 2026-03-08 added the dedicated `discord-inbound` lane, delivery hardening, and raw REST fetch timeouts.
+- 2026-03-09 confirmed same-session post-enqueue head-of-line blocking and changed the inbound worker to release the keyed session queue after replies are queued instead of after full Discord delivery settles.
+- The separate pre-enqueue 120 second timeout path is still open.
 
-### 2. Discord delivery hardening
-- Outer retry layer no longer retries Carbon `RateLimitError` (avoids double 429 retry stacking)
-- Per-attempt success/failure logging with elapsed time in `src/discord/monitor/reply-delivery.ts`
+Operational tuning:
 
-### 3. Fetch timeouts on raw Discord REST paths
-- 15s `AbortSignal.timeout` on webhook sends (`src/discord/send.outbound.ts`)
-- 15s `AbortSignal.timeout` on voice upload requests (`src/discord/voice-message.ts`)
-- Carbon `rest.post()`/`rest.patch()` already has internal timeouts (not changed)
-
-### Operational tuning
 To increase Discord concurrency on a VPS, raise:
+
 ```bash
 openclaw config set agents.defaults.maxConcurrent 4
 ```
+
 Both `main` and `discord-inbound` lanes inherit this value.
 
+## VPS deployment
+
+### Connection
+
+- SSH alias: `ssh vps` (root user)
+- Codebase location on VPS: `/root/miniAgent`
+- Workspace (config/sessions): `/root/.openclaw`
+
+### Runtime
+
+- Bun: `/root/.bun/bin/bun` (v1.3.10)
+- Node: v22.22.0, pnpm: 10.23.0 (available but gateway runs via bun)
+- Proxy: `HTTP_PROXY=http://127.0.0.1:10809`, `HTTPS_PROXY=http://127.0.0.1:10809`
+
+### systemd service
+
+- Unit: `openclaw-gateway.service` (`/etc/systemd/system/openclaw-gateway.service`)
+- ExecStart: `/root/.bun/bin/bun --smol /root/miniAgent/src/index.ts gateway`
+- Env vars set in unit: `OPENCLAW_SKIP_CANVAS_HOST=1`, `OPENCLAW_SKIP_UPDATE_CHECK=1`
+- Control: `systemctl stop/start/restart openclaw-gateway.service`
+- Logs: `journalctl -u openclaw-gateway.service -f`
+
+### Deploy procedure
+
+```bash
+# 1. Stop the gateway
+ssh vps "systemctl stop openclaw-gateway.service"
+
+# 2. Rsync from local _fresh-rebase (no .git, node_modules, dist, apps, etc.)
+rsync -az \
+  --exclude='.git' \
+  --exclude='node_modules' \
+  --exclude='dist' \
+  --exclude='apps' \
+  --exclude='Swabble' \
+  --exclude='.pi' \
+  --exclude='.vscode' \
+  /home/ray/miniAgent/_fresh-rebase/ vps:/root/miniAgent/
+
+# 3. Install deps on VPS
+ssh vps "cd /root/miniAgent && /root/.bun/bin/bun install"
+
+# 4. Restart
+ssh vps "systemctl start openclaw-gateway.service"
+
+# 5. Verify
+ssh vps "systemctl status openclaw-gateway.service"
+```
+
+### Notes
+
+- No git on VPS; codebase is deployed via rsync, not git pull.
+- `bun install` (without `--frozen-lockfile`) is required because bun's pnpm-lock migration doesn't support workspace links.
+- The web panel requires `dist/control-ui/` assets. Build locally with `node scripts/ui.js build` then rsync `dist/control-ui/` to the VPS (rsync excludes `dist/` by default).
+- `gateway.controlUi.enabled` must be `true` in `/root/.openclaw/openclaw.json` for the web panel to work.
+- Discord bot name: **Finnn** (user ID `1477293461001469997`).
+- Gateway auth token is in `/root/.openclaw/openclaw.json` under `gateway.auth.token`.
+
 ## Next priorities
+
 1. Complete full non-Discord channel removal at plugin loader/catalog level (not only runtime imports).
 2. Burn-in test on alternate port and compare RSS to production baseline.
 3. Cut over service to `_fresh-rebase` only after burn-in is stable.

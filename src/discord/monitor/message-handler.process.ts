@@ -2,8 +2,8 @@ import { ChannelType, type RequestClient } from "@buape/carbon";
 import { resolveAckReaction, resolveHumanDelayConfig } from "../../agents/identity.js";
 import { EmbeddedBlockChunker } from "../../agents/pi-embedded-block-chunker.js";
 import { resolveChunkMode } from "../../auto-reply/chunk.js";
-import { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
 import { formatInboundEnvelope, resolveEnvelopeFormatOptions } from "../../auto-reply/envelope.js";
+import { dispatchReplyFromConfig } from "../../auto-reply/reply/dispatch-from-config.js";
 import {
   buildPendingHistoryContextFromMap,
   clearHistoryEntriesIfEnabled,
@@ -64,7 +64,13 @@ function isProcessAborted(abortSignal?: AbortSignal): boolean {
   return Boolean(abortSignal?.aborted);
 }
 
-export async function processDiscordMessage(ctx: DiscordMessagePreflightContext) {
+async function processDiscordMessageInternal(
+  ctx: DiscordMessagePreflightContext,
+  options: {
+    awaitDeliveryIdle: boolean;
+    onDetachedSettleError?: (error: unknown) => void;
+  },
+) {
   const {
     cfg,
     discordConfig,
@@ -718,116 +724,140 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
       },
     });
 
-  let dispatchResult: Awaited<ReturnType<typeof dispatchInboundMessage>> | null = null;
+  let dispatchResult: Awaited<ReturnType<typeof dispatchReplyFromConfig>> | null = null;
   let dispatchError = false;
   let dispatchAborted = false;
   try {
     if (isProcessAborted(abortSignal)) {
       dispatchAborted = true;
-      return;
-    }
-    dispatchResult = await dispatchInboundMessage({
-      ctx: ctxPayload,
-      cfg,
-      dispatcher,
-      replyOptions: {
-        ...replyOptions,
-        abortSignal,
-        skillFilter: channelConfig?.skills,
-        disableBlockStreaming:
-          disableBlockStreamingForDraft ??
-          (typeof discordConfig?.blockStreaming === "boolean"
-            ? !discordConfig.blockStreaming
-            : undefined),
-        onPartialReply: draftStream ? (payload) => updateDraftFromPartial(payload.text) : undefined,
-        onAssistantMessageStart: draftStream
-          ? () => {
-              if (shouldSplitPreviewMessages && hasStreamedMessage) {
-                logVerbose("discord: calling forceNewMessage() for draft stream");
-                draftStream.forceNewMessage();
+    } else {
+      dispatchResult = await dispatchReplyFromConfig({
+        ctx: ctxPayload,
+        cfg,
+        dispatcher,
+        replyOptions: {
+          ...replyOptions,
+          abortSignal,
+          skillFilter: channelConfig?.skills,
+          disableBlockStreaming:
+            disableBlockStreamingForDraft ??
+            (typeof discordConfig?.blockStreaming === "boolean"
+              ? !discordConfig.blockStreaming
+              : undefined),
+          onPartialReply: draftStream
+            ? (payload) => updateDraftFromPartial(payload.text)
+            : undefined,
+          onAssistantMessageStart: draftStream
+            ? () => {
+                if (shouldSplitPreviewMessages && hasStreamedMessage) {
+                  logVerbose("discord: calling forceNewMessage() for draft stream");
+                  draftStream.forceNewMessage();
+                }
+                lastPartialText = "";
+                draftText = "";
+                draftChunker?.reset();
               }
-              lastPartialText = "";
-              draftText = "";
-              draftChunker?.reset();
-            }
-          : undefined,
-        onReasoningEnd: draftStream
-          ? () => {
-              if (shouldSplitPreviewMessages && hasStreamedMessage) {
-                logVerbose("discord: calling forceNewMessage() for draft stream");
-                draftStream.forceNewMessage();
+            : undefined,
+          onReasoningEnd: draftStream
+            ? () => {
+                if (shouldSplitPreviewMessages && hasStreamedMessage) {
+                  logVerbose("discord: calling forceNewMessage() for draft stream");
+                  draftStream.forceNewMessage();
+                }
+                lastPartialText = "";
+                draftText = "";
+                draftChunker?.reset();
               }
-              lastPartialText = "";
-              draftText = "";
-              draftChunker?.reset();
+            : undefined,
+          onModelSelected,
+          onReasoningStream: async () => {
+            await statusReactions.setThinking();
+          },
+          onToolStart: async (payload) => {
+            if (isProcessAborted(abortSignal)) {
+              return;
             }
-          : undefined,
-        onModelSelected,
-        onReasoningStream: async () => {
-          await statusReactions.setThinking();
+            await statusReactions.setTool(payload.name);
+          },
         },
-        onToolStart: async (payload) => {
-          if (isProcessAborted(abortSignal)) {
-            return;
-          }
-          await statusReactions.setTool(payload.name);
-        },
-      },
-    });
-    if (isProcessAborted(abortSignal)) {
-      dispatchAborted = true;
-      return;
+      });
+      if (isProcessAborted(abortSignal)) {
+        dispatchAborted = true;
+      }
     }
   } catch (err) {
     if (isProcessAborted(abortSignal)) {
       dispatchAborted = true;
-      return;
+    } else {
+      dispatchError = true;
+      throw err;
     }
-    dispatchError = true;
-    throw err;
   } finally {
-    try {
-      // Must stop() first to flush debounced content before clear() wipes state.
-      await draftStream?.stop();
-      if (!finalizedViaPreviewMessage) {
-        await draftStream?.clear();
-      }
-    } catch (err) {
-      // Draft cleanup should never keep typing alive.
-      logVerbose(`discord: draft cleanup failed: ${String(err)}`);
-    } finally {
-      markRunComplete();
-      markDispatchIdle();
-    }
-    if (statusReactionsEnabled) {
-      if (dispatchAborted) {
-        if (removeAckAfterReply) {
-          void statusReactions.clear();
-        } else {
-          void statusReactions.restoreInitial();
-        }
-      } else {
-        if (dispatchError) {
-          await statusReactions.setError();
-        } else {
-          await statusReactions.setDone();
-        }
-        if (removeAckAfterReply) {
-          void (async () => {
-            await sleep(dispatchError ? DEFAULT_TIMING.errorHoldMs : DEFAULT_TIMING.doneHoldMs);
-            await statusReactions.clear();
-          })();
-        } else {
-          void statusReactions.restoreInitial();
-        }
-      }
-    }
-  }
-  if (dispatchAborted) {
-    return;
+    dispatcher.markComplete();
+    markRunComplete();
   }
 
-  if (!dispatchResult?.queuedFinal) {
+  const settleDispatchPromise = (async () => {
+    try {
+      await dispatcher.waitForIdle();
+    } finally {
+      try {
+        // Must stop() first to flush debounced content before clear() wipes state.
+        await draftStream?.stop();
+        if (!finalizedViaPreviewMessage) {
+          await draftStream?.clear();
+        }
+      } catch (err) {
+        // Draft cleanup should never keep typing alive.
+        logVerbose(`discord: draft cleanup failed: ${String(err)}`);
+      } finally {
+        markDispatchIdle();
+      }
+      if (statusReactionsEnabled) {
+        if (dispatchAborted) {
+          if (removeAckAfterReply) {
+            void statusReactions.clear();
+          } else {
+            void statusReactions.restoreInitial();
+          }
+        } else {
+          if (dispatchError) {
+            await statusReactions.setError();
+          } else {
+            await statusReactions.setDone();
+          }
+          if (removeAckAfterReply) {
+            void (async () => {
+              await sleep(dispatchError ? DEFAULT_TIMING.errorHoldMs : DEFAULT_TIMING.doneHoldMs);
+              await statusReactions.clear();
+            })();
+          } else {
+            void statusReactions.restoreInitial();
+          }
+        }
+      }
+    }
+
+    if (dispatchAborted) {
+      return;
+    }
+
+    if (!dispatchResult?.queuedFinal) {
+      if (isGuildMessage) {
+        clearHistoryEntriesIfEnabled({
+          historyMap: guildHistories,
+          historyKey: messageChannelId,
+          limit: historyLimit,
+        });
+      }
+      return;
+    }
+    if (shouldLogVerbose()) {
+      const finalCount = dispatchResult.counts.final;
+      logVerbose(
+        `discord: delivered ${finalCount} reply${finalCount === 1 ? "" : "ies"} to ${replyTarget}`,
+      );
+    }
     if (isGuildMessage) {
       clearHistoryEntriesIfEnabled({
         historyMap: guildHistories,
@@ -835,19 +865,28 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
         limit: historyLimit,
       });
     }
+  })();
+
+  if (options.awaitDeliveryIdle) {
+    await settleDispatchPromise;
     return;
   }
-  if (shouldLogVerbose()) {
-    const finalCount = dispatchResult.counts.final;
-    logVerbose(
-      `discord: delivered ${finalCount} reply${finalCount === 1 ? "" : "ies"} to ${replyTarget}`,
-    );
-  }
-  if (isGuildMessage) {
-    clearHistoryEntriesIfEnabled({
-      historyMap: guildHistories,
-      historyKey: messageChannelId,
-      limit: historyLimit,
-    });
-  }
+  void settleDispatchPromise.catch((error) => {
+    options.onDetachedSettleError?.(error);
+  });
+}
+
+export async function processDiscordMessageSerializedPhase(ctx: DiscordMessagePreflightContext) {
+  await processDiscordMessageInternal(ctx, {
+    awaitDeliveryIdle: false,
+    onDetachedSettleError: (error) => {
+      ctx.runtime.error?.(danger(`discord detached delivery settle failed: ${String(error)}`));
+    },
+  });
+}
+
+export async function processDiscordMessage(ctx: DiscordMessagePreflightContext) {
+  await processDiscordMessageInternal(ctx, {
+    awaitDeliveryIdle: true,
+  });
 }
