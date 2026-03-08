@@ -66,4 +66,22 @@ describe("sendWebhookMessageDiscord activity", () => {
     });
     expect(loadConfigMock).not.toHaveBeenCalled();
   });
+
+  it("adds an abort signal timeout to webhook sends", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return new Response(JSON.stringify({ id: "msg-2", channel_id: "thread-2" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await sendWebhookMessageDiscord("hello world", {
+      webhookId: "wh-1",
+      webhookToken: "tok-1",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

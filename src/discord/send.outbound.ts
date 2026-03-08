@@ -43,6 +43,8 @@ import {
   sendDiscordVoiceMessage,
 } from "./voice-message.js";
 
+const DISCORD_OUTBOUND_FETCH_TIMEOUT_MS = 15_000;
+
 type DiscordSendOpts = {
   cfg?: OpenClawConfig;
   token?: string;
@@ -366,6 +368,7 @@ export async function sendWebhookMessageDiscord(
       headers: {
         "content-type": "application/json",
       },
+      signal: AbortSignal.timeout(DISCORD_OUTBOUND_FETCH_TIMEOUT_MS),
       body: JSON.stringify({
         content: rewrittenText,
         username: opts.username?.trim() || undefined,

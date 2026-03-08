@@ -174,6 +174,7 @@ export function buildEmbeddedRunBaseParams(params: {
     agentDir: params.run.agentDir,
     config: params.run.config,
     skillsSnapshot: params.run.skillsSnapshot,
+    lane: params.run.lane,
     ownerNumbers: params.run.ownerNumbers,
     senderIsOwner: params.run.senderIsOwner,
     enforceFinalTag: resolveEnforceFinalTag(params.run, params.provider),

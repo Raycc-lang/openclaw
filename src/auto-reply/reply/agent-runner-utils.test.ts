@@ -104,6 +104,7 @@ describe("agent-runner-utils", () => {
       agentDir: run.agentDir,
       config: run.config,
       skillsSnapshot: run.skillsSnapshot,
+      lane: undefined,
       ownerNumbers: run.ownerNumbers,
       enforceFinalTag: true,
       provider: "openai",
@@ -118,6 +119,20 @@ describe("agent-runner-utils", () => {
       timeoutMs: run.timeoutMs,
       runId: "run-1",
     });
+  });
+
+  it("passes through the configured execution lane", () => {
+    const run = makeRun({ lane: "discord-inbound" });
+
+    const resolved = buildEmbeddedRunBaseParams({
+      run,
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      runId: "run-2",
+      authProfile: {},
+    });
+
+    expect(resolved.lane).toBe("discord-inbound");
   });
 
   it("builds embedded contexts and scopes auth profile by provider", () => {

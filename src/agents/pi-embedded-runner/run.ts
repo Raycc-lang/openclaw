@@ -4,7 +4,7 @@ import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import { generateSecureToken } from "../../infra/secure-random.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import type { PluginHookBeforeAgentStartResult } from "../../plugins/types.js";
-import { enqueueCommandInLane } from "../../process/command-queue.js";
+import { enqueueCommandInLane, getQueueSize } from "../../process/command-queue.js";
 import { isMarkdownCapableMessageChannel } from "../../utils/message-channel.js";
 import { resolveOpenClawAgentDir } from "../agent-paths.js";
 import { hasConfiguredModelFallbacks } from "../agent-scope.js";
@@ -255,36 +255,43 @@ export async function runEmbeddedPiAgent(
         : "plain"
       : "markdown");
   const isProbeSession = params.sessionId?.startsWith("probe-") ?? false;
+  const redactedSessionId = redactRunIdentifier(params.sessionId);
+  const redactedSessionKey = redactRunIdentifier(params.sessionKey);
+  const logLaneWait =
+    (scope: "session" | "global", lane: string) => (waitMs: number, queuedAhead: number) => {
+      log.warn(
+        `[embedded-run-queue] scope=${scope} lane=${lane} waitMs=${waitMs} queuedAhead=${queuedAhead} laneDepth=${getQueueSize(lane)} run=${params.runId} session=${redactedSessionId} sessionKey=${redactedSessionKey} agent=${params.agentId ?? "unknown"} trigger=${params.trigger ?? "unknown"}`,
+      );
+    };
 
-  return enqueueSession(() =>
-    enqueueGlobal(async () => {
-      const started = Date.now();
-      const workspaceResolution = resolveRunWorkspaceDir({
-        workspaceDir: params.workspaceDir,
-        sessionKey: params.sessionKey,
-        agentId: params.agentId,
-        config: params.config,
-      });
-      const resolvedWorkspace = workspaceResolution.workspaceDir;
-      const redactedSessionId = redactRunIdentifier(params.sessionId);
-      const redactedSessionKey = redactRunIdentifier(params.sessionKey);
-      const redactedWorkspace = redactRunIdentifier(resolvedWorkspace);
-      if (workspaceResolution.usedFallback) {
-        log.warn(
-          `[workspace-fallback] caller=runEmbeddedPiAgent reason=${workspaceResolution.fallbackReason} run=${params.runId} session=${redactedSessionId} sessionKey=${redactedSessionKey} agent=${workspaceResolution.agentId} workspace=${redactedWorkspace}`,
-        );
-      }
-      const prevCwd = process.cwd();
+  return enqueueSession(
+    () =>
+      enqueueGlobal(async () => {
+        const started = Date.now();
+        const workspaceResolution = resolveRunWorkspaceDir({
+          workspaceDir: params.workspaceDir,
+          sessionKey: params.sessionKey,
+          agentId: params.agentId,
+          config: params.config,
+        });
+        const resolvedWorkspace = workspaceResolution.workspaceDir;
+        const redactedWorkspace = redactRunIdentifier(resolvedWorkspace);
+        if (workspaceResolution.usedFallback) {
+          log.warn(
+            `[workspace-fallback] caller=runEmbeddedPiAgent reason=${workspaceResolution.fallbackReason} run=${params.runId} session=${redactedSessionId} sessionKey=${redactedSessionKey} agent=${workspaceResolution.agentId} workspace=${redactedWorkspace}`,
+          );
+        }
+        const prevCwd = process.cwd();
 
-      let provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
-      let modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
-      const agentDir = params.agentDir ?? resolveOpenClawAgentDir();
-      const fallbackConfigured = hasConfiguredModelFallbacks({
-        cfg: params.config,
-        agentId: params.agentId,
-        sessionKey: params.sessionKey,
-      });
-      await ensureOpenClawModelsJson(params.config, agentDir);
+        let provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
+        let modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+        const agentDir = params.agentDir ?? resolveOpenClawAgentDir();
+        const fallbackConfigured = hasConfiguredModelFallbacks({
+          cfg: params.config,
+          agentId: params.agentId,
+          sessionKey: params.sessionKey,
+        });
+        await ensureOpenClawModelsJson(params.config, agentDir);
 
       // Run before_model_resolve hooks early so plugins can override the
       // provider/model before resolveModel().
@@ -1415,6 +1422,13 @@ export async function runEmbeddedPiAgent(
         stopCopilotRefreshTimer();
         process.chdir(prevCwd);
       }
-    }),
+      }, {
+        warnAfterMs: 5_000,
+        onWait: logLaneWait("global", globalLane),
+      }),
+    {
+      warnAfterMs: 5_000,
+      onWait: logLaneWait("session", sessionLane),
+    },
   );
 }

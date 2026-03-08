@@ -60,6 +60,7 @@ export type FollowupRun = {
     workspaceDir: string;
     config: OpenClawConfig;
     skillsSnapshot?: SkillSnapshot;
+    lane?: string;
     provider: string;
     model: string;
     authProfileId?: string;

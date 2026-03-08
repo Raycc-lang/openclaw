@@ -193,6 +193,7 @@ export function createFollowupRunner(params: {
               workspaceDir: queued.run.workspaceDir,
               config: queued.run.config,
               skillsSnapshot: queued.run.skillsSnapshot,
+              lane: queued.run.lane,
               prompt: queued.prompt,
               extraSystemPrompt: queued.run.extraSystemPrompt,
               ownerNumbers: queued.run.ownerNumbers,

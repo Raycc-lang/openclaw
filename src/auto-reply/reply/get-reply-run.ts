@@ -17,6 +17,7 @@ import {
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
+import { CommandLane } from "../../process/lanes.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
 import { hasControlCommand } from "../command-detection.js";
@@ -468,6 +469,13 @@ export async function runPreparedReply(
     isNewSession,
   });
   const authProfileIdSource = sessionEntry?.authProfileOverrideSource;
+  const messageProvider = resolveOriginMessageProvider({
+    originatingChannel: ctx.OriginatingChannel ?? sessionCtx.OriginatingChannel,
+    // Prefer Provider over Surface for fallback channel identity.
+    // Surface can carry relayed metadata (for example "webchat") while Provider
+    // still reflects the active channel that should own tool routing.
+    provider: ctx.Provider ?? ctx.Surface ?? sessionCtx.Provider,
+  });
   const followupRun = {
     prompt: queuedBody,
     messageId: sessionCtx.MessageSidFull ?? sessionCtx.MessageSid,
@@ -484,13 +492,7 @@ export async function runPreparedReply(
       agentDir,
       sessionId: sessionIdFinal,
       sessionKey,
-      messageProvider: resolveOriginMessageProvider({
-        originatingChannel: ctx.OriginatingChannel ?? sessionCtx.OriginatingChannel,
-        // Prefer Provider over Surface for fallback channel identity.
-        // Surface can carry relayed metadata (for example "webchat") while Provider
-        // still reflects the active channel that should own tool routing.
-        provider: ctx.Provider ?? ctx.Surface ?? sessionCtx.Provider,
-      }),
+      messageProvider,
       agentAccountId: sessionCtx.AccountId,
       groupId: resolveGroupSessionKey(sessionCtx)?.id ?? undefined,
       groupChannel: sessionCtx.GroupChannel?.trim() ?? sessionCtx.GroupSubject?.trim(),
@@ -504,6 +506,7 @@ export async function runPreparedReply(
       workspaceDir,
       config: cfg,
       skillsSnapshot,
+      lane: messageProvider === "discord" ? CommandLane.DiscordInbound : undefined,
       provider,
       model,
       authProfileId,

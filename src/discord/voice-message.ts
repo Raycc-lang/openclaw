@@ -24,6 +24,7 @@ const DISCORD_VOICE_MESSAGE_FLAG = 1 << 13;
 const SUPPRESS_NOTIFICATIONS_FLAG = 1 << 12;
 const WAVEFORM_SAMPLES = 256;
 const DISCORD_OPUS_SAMPLE_RATE_HZ = 48_000;
+const DISCORD_VOICE_FETCH_TIMEOUT_MS = 15_000;
 
 export type VoiceMessageMetadata = {
   durationSecs: number;
@@ -267,6 +268,7 @@ export async function sendDiscordVoiceMessage(
         Authorization: `Bot ${botToken}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(DISCORD_VOICE_FETCH_TIMEOUT_MS),
       body: JSON.stringify({
         files: [{ filename, file_size: fileSize, id: "0" }],
       }),
@@ -310,6 +312,7 @@ export async function sendDiscordVoiceMessage(
     headers: {
       "Content-Type": "audio/ogg",
     },
+    signal: AbortSignal.timeout(DISCORD_VOICE_FETCH_TIMEOUT_MS),
     body: new Uint8Array(audioBuffer),
   });
 

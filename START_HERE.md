@@ -38,6 +38,34 @@ pnpm vitest src/gateway/server-bun.test.ts src/agents/session-file-repair.test.t
 You may see stale config warnings for removed plugins (for example `google-antigravity-auth`).
 These are config hygiene warnings, not gateway startup blockers.
 
+## Discord latency fixes (2026-03-08)
+
+Three patches landed to fix ~5-minute reply delays on Discord:
+
+### 1. Dedicated Discord inbound lane
+Live Discord user messages now run on a `discord-inbound` lane instead of sharing the global `main` lane with cron, heartbeat, and CLI work. This prevents background tasks from blocking user-facing replies.
+
+- `src/process/lanes.ts` — new `CommandLane.DiscordInbound`
+- `src/gateway/server-lanes.ts` / `src/gateway/server-reload-handlers.ts` — lane concurrency (inherits `agents.defaults.maxConcurrent`)
+- `src/auto-reply/reply/get-reply-run.ts:509` — routes Discord turns onto the new lane
+- `src/auto-reply/reply/queue/types.ts`, `agent-runner-utils.ts`, `followup-runner.ts` — threads `lane` through followup queue
+
+### 2. Discord delivery hardening
+- Outer retry layer no longer retries Carbon `RateLimitError` (avoids double 429 retry stacking)
+- Per-attempt success/failure logging with elapsed time in `src/discord/monitor/reply-delivery.ts`
+
+### 3. Fetch timeouts on raw Discord REST paths
+- 15s `AbortSignal.timeout` on webhook sends (`src/discord/send.outbound.ts`)
+- 15s `AbortSignal.timeout` on voice upload requests (`src/discord/voice-message.ts`)
+- Carbon `rest.post()`/`rest.patch()` already has internal timeouts (not changed)
+
+### Operational tuning
+To increase Discord concurrency on a VPS, raise:
+```bash
+openclaw config set agents.defaults.maxConcurrent 4
+```
+Both `main` and `discord-inbound` lanes inherit this value.
+
 ## Next priorities
 1. Complete full non-Discord channel removal at plugin loader/catalog level (not only runtime imports).
 2. Burn-in test on alternate port and compare RSS to production baseline.

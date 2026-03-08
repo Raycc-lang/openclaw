@@ -131,8 +131,10 @@ export function createGatewayReloadHandlers(params: {
       }
     }
 
+    const agentConcurrency = resolveAgentMaxConcurrent(nextConfig);
     setCommandLaneConcurrency(CommandLane.Cron, nextConfig.cron?.maxConcurrentRuns ?? 1);
-    setCommandLaneConcurrency(CommandLane.Main, resolveAgentMaxConcurrent(nextConfig));
+    setCommandLaneConcurrency(CommandLane.Main, agentConcurrency);
+    setCommandLaneConcurrency(CommandLane.DiscordInbound, agentConcurrency);
     setCommandLaneConcurrency(CommandLane.Subagent, resolveSubagentMaxConcurrent(nextConfig));
 
     if (plan.hotReasons.length > 0) {

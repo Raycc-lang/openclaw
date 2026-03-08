@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { RateLimitError } from "@buape/carbon";
 import type { RuntimeEnv } from "../../runtime.js";
 import { deliverDiscordReply } from "./reply-delivery.js";
 import {
@@ -316,6 +317,35 @@ describe("deliverDiscordReply", () => {
         textLimit: 2000,
       }),
     ).rejects.toThrow("bad request");
+
+    expect(sendMessageDiscordMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not apply an outer retry to carbon RateLimitError", async () => {
+    const response = new Response(
+      JSON.stringify({ message: "rate limited", retry_after: 1, global: false }),
+      {
+        status: 429,
+        headers: { "content-type": "application/json" },
+      },
+    );
+    sendMessageDiscordMock.mockRejectedValueOnce(
+      new RateLimitError(response, {
+        message: "rate limited",
+        retry_after: 1,
+        global: false,
+      }),
+    );
+
+    await expect(
+      deliverDiscordReply({
+        replies: [{ text: "fail once" }],
+        target: "channel:123",
+        token: "token",
+        runtime,
+        textLimit: 2000,
+      }),
+    ).rejects.toThrow("rate limited");
 
     expect(sendMessageDiscordMock).toHaveBeenCalledTimes(1);
   });

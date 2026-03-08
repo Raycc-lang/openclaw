@@ -577,4 +577,32 @@ describe("createFollowupRunner agentDir forwarding", () => {
     const call = runEmbeddedPiAgentMock.mock.calls.at(-1)?.[0] as { agentDir?: string };
     expect(call?.agentDir).toBe(agentDir);
   });
+
+  it("passes queued run lane to runEmbeddedPiAgent", async () => {
+    runEmbeddedPiAgentMock.mockClear();
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "hello world!" }],
+      messagingToolSentTexts: ["different message"],
+      meta: {},
+    });
+    const runner = createFollowupRunner({
+      opts: { onBlockReply: vi.fn(async () => {}) },
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      defaultModel: "anthropic/claude-opus-4-5",
+    });
+    const queued = createQueuedRun();
+
+    await runner({
+      ...queued,
+      run: {
+        ...queued.run,
+        lane: "discord-inbound",
+      },
+    });
+
+    expect(runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
+    const call = runEmbeddedPiAgentMock.mock.calls.at(-1)?.[0] as { lane?: string };
+    expect(call?.lane).toBe("discord-inbound");
+  });
 });

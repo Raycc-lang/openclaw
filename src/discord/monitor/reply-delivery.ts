@@ -1,9 +1,10 @@
-import type { RequestClient } from "@buape/carbon";
+import { RateLimitError, type RequestClient } from "@buape/carbon";
 import { resolveAgentAvatar } from "../../agents/identity-avatar.js";
 import type { ChunkMode } from "../../auto-reply/chunk.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import { loadConfig } from "../../config/config.js";
 import type { MarkdownTableMode, ReplyToMode } from "../../config/types.base.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { createDiscordRetryRunner, type RetryRunner } from "../../infra/retry-policy.js";
 import { resolveRetryConfig, retryAsync, type RetryConfig } from "../../infra/retry.js";
 import { convertMarkdownTables } from "../../markdown/tables.js";
@@ -28,6 +29,7 @@ export type DiscordThreadBindingLookup = {
 };
 
 type ResolvedRetryConfig = Required<RetryConfig>;
+const log = createSubsystemLogger("discord/reply-delivery");
 
 const DISCORD_DELIVERY_RETRY_DEFAULTS: ResolvedRetryConfig = {
   attempts: 3,
@@ -37,6 +39,9 @@ const DISCORD_DELIVERY_RETRY_DEFAULTS: ResolvedRetryConfig = {
 };
 
 function isRetryableDiscordError(err: unknown): boolean {
+  if (err instanceof RateLimitError) {
+    return false;
+  }
   const status = (err as { status?: number }).status ?? (err as { statusCode?: number }).statusCode;
   return status === 429 || (status !== undefined && status >= 500);
 }
@@ -67,11 +72,34 @@ function resolveDeliveryRetryConfig(retry?: RetryConfig): ResolvedRetryConfig {
 async function sendWithRetry(
   fn: () => Promise<unknown>,
   retryConfig: ResolvedRetryConfig,
+  label: string,
+  target: string,
 ): Promise<void> {
-  await retryAsync(fn, {
+  let attempt = 0;
+  await retryAsync(async () => {
+    attempt += 1;
+    const startedAt = Date.now();
+    try {
+      await fn();
+      log.debug(
+        `discord delivery attempt ok: label=${label} target=${target} attempt=${attempt} elapsedMs=${Date.now() - startedAt}`,
+      );
+    } catch (err) {
+      log.warn(
+        `discord delivery attempt failed: label=${label} target=${target} attempt=${attempt} elapsedMs=${Date.now() - startedAt} error=${String(err)}`,
+      );
+      throw err;
+    }
+  }, {
     ...retryConfig,
+    label,
     shouldRetry: (err) => isRetryableDiscordError(err),
     retryAfterMs: getDiscordRetryAfterMs,
+    onRetry: (info) => {
+      log.warn(
+        `discord delivery retry: label=${label} target=${target} attempt=${info.attempt}/${Math.max(1, info.maxAttempts - 1)} delayMs=${info.delayMs} error=${String(info.err)}`,
+      );
+    },
   });
 }
 
@@ -148,16 +176,24 @@ async function sendDiscordChunkWithFallback(params: {
   const text = params.text;
   const binding = params.binding;
   if (binding?.webhookId && binding?.webhookToken) {
+    const webhookId = binding.webhookId;
+    const webhookToken = binding.webhookToken;
     try {
-      await sendWebhookMessageDiscord(text, {
-        webhookId: binding.webhookId,
-        webhookToken: binding.webhookToken,
-        accountId: binding.accountId,
-        threadId: binding.threadId,
-        replyTo: params.replyTo,
-        username: params.username,
-        avatarUrl: params.avatarUrl,
-      });
+      await sendWithRetry(
+        () =>
+          sendWebhookMessageDiscord(text, {
+            webhookId,
+            webhookToken,
+            accountId: binding.accountId,
+            threadId: binding.threadId,
+            replyTo: params.replyTo,
+            username: params.username,
+            avatarUrl: params.avatarUrl,
+          }),
+        params.retryConfig,
+        "webhook",
+        params.target,
+      );
       return;
     } catch {
       // Fall through to the standard bot sender path.
@@ -171,6 +207,8 @@ async function sendDiscordChunkWithFallback(params: {
     await sendWithRetry(
       () => sendDiscordText(rest, channelId, text, params.replyTo, request),
       params.retryConfig,
+      "text",
+      params.target,
     );
     return;
   }
@@ -183,6 +221,8 @@ async function sendDiscordChunkWithFallback(params: {
         replyTo: params.replyTo,
       }),
     params.retryConfig,
+    "message",
+    params.target,
   );
 }
 
@@ -209,6 +249,8 @@ async function sendAdditionalDiscordMedia(params: {
           replyTo,
         }),
       params.retryConfig,
+      "media",
+      params.target,
     );
   }
 }
@@ -315,12 +357,18 @@ export async function deliverDiscordReply(params: {
     // Voice message path: audioAsVoice flag routes through sendVoiceMessageDiscord.
     if (payload.audioAsVoice) {
       const replyTo = resolveReplyTo();
-      await sendVoiceMessageDiscord(params.target, firstMedia, {
-        token: params.token,
-        rest: params.rest,
-        accountId: params.accountId,
-        replyTo,
-      });
+      await sendWithRetry(
+        () =>
+          sendVoiceMessageDiscord(params.target, firstMedia, {
+            token: params.token,
+            rest: params.rest,
+            accountId: params.accountId,
+            replyTo,
+          }),
+        retryConfig,
+        "voice",
+        params.target,
+      );
       deliveredAny = true;
       // Voice messages cannot include text; send remaining text separately if present.
       await sendDiscordChunkWithFallback({
@@ -352,14 +400,20 @@ export async function deliverDiscordReply(params: {
     }
 
     const replyTo = resolveReplyTo();
-    await sendMessageDiscord(params.target, text, {
-      token: params.token,
-      rest: params.rest,
-      mediaUrl: firstMedia,
-      accountId: params.accountId,
-      mediaLocalRoots: params.mediaLocalRoots,
-      replyTo,
-    });
+    await sendWithRetry(
+      () =>
+        sendMessageDiscord(params.target, text, {
+          token: params.token,
+          rest: params.rest,
+          mediaUrl: firstMedia,
+          accountId: params.accountId,
+          mediaLocalRoots: params.mediaLocalRoots,
+          replyTo,
+        }),
+      retryConfig,
+      "media",
+      params.target,
+    );
     deliveredAny = true;
     await sendAdditionalDiscordMedia({
       target: params.target,
