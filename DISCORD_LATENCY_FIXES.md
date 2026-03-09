@@ -125,7 +125,138 @@ The pre-enqueue timeout path now has first-class timing diagnostics:
 - `src/channels/plugins/types.core.ts`
   - thread the new queue metrics through shared channel snapshot types so status consumers can read them
 
+## 2026-03-09 pre-enqueue channel lookup fix
+
+The remaining pre-enqueue bottleneck was verified in the channel-info path before
+`inboundWorker.enqueue(...)`.
+
+### Verified mechanism
+
+- `src/discord/monitor/message-handler.preflight.ts`
+  - still resolved channel info before enqueue
+  - already logged that work as `preflight-channel-info`
+- `src/discord/monitor/message-utils.ts`
+  - still called `client.fetchChannel(channelId)` on cache miss
+- `node_modules/@buape/carbon/dist/src/classes/RequestClient.js`
+  - Carbon queues REST requests through a single per-client FIFO queue
+  - queued requests are not cancelable from the OpenClaw listener timeout path
+
+Important nuance:
+
+- Carbon does apply a 15 second timeout once a REST request starts.
+- The real stall vector is the uncancelable wait before a queued `fetchChannel(...)` request starts.
+
+### What changed
+
+- `src/discord/monitor/message-handler.preflight.ts`
+  - added queue-depth-aware diagnostics around `preflight-channel-info`
+  - uses a tight 2 second local fallback budget for guild channel-info lookup
+  - continues guild preflight with degraded metadata if channel lookup is stuck
+- `src/discord/monitor/message-utils.ts`
+  - added a channel-info cache probe used by preflight diagnostics
+- `src/discord/monitor/message-handler.preflight.test.ts`
+  - added regression coverage for a stalled guild `fetchChannel(...)` path
+
+### Why this helps
+
+- Ordinary guild messages no longer sit in preflight indefinitely waiting on Carbon's REST queue.
+- The listener can still classify guild traffic from `guild_id` and move the message into the inbound worker.
+- Channel names, thread parent info, and other enrichments still work when the lookup returns quickly, but they no longer block ingress forever during incidents.
+
+### Validation
+
+Focused local validation for this fix:
+
+```bash
+pnpm vitest src/discord/monitor/message-handler.preflight.test.ts src/discord/monitor/message-utils.test.ts --run
+```
+
+Status:
+
+- the focused Vitest scope passed
+- full `pnpm tsgo` is still blocked by pre-existing repository-wide type errors in unrelated extension and gateway files
+- filtering `pnpm tsgo` output for `message-handler.preflight` and `message-utils` produced no hits after this change
+
+## VPS deployment
+
+Deployed to the VPS on 2026-03-09 UTC using the `START_HERE.md` rsync workflow:
+
+- stopped `openclaw-gateway.service`
+- rsynced `/home/ray/miniAgent/_fresh-rebase/` to `/root/miniAgent/`
+- ran `/root/.bun/bin/bun install`
+- restarted `openclaw-gateway.service`
+
+Post-deploy verification on the VPS:
+
+- service restarted at `Mon 2026-03-09 10:12:02 UTC`
+- current gateway PID after restart: `124142`
+- gateway is listening on `127.0.0.1:18789`
+- Discord provider logged in again at `2026-03-09T10:12:14.071+00:00` as `1477293461001469997 (Finnn)`
+
+## 2026-03-09 post-enqueue timing instrumentation
+
+Added targeted slow-path timing logs to separate the four phases between Discord message receipt and the first model call. All logs use a 3 second slow-path threshold; they always fire in verbose mode and promote to `runtime.log` when slow.
+
+### What changed
+
+- `src/discord/monitor/message-handler.process.ts`
+  - timing around `dispatchReplyFromConfig(...)` — logs dispatch duration after it completes
+  - timing around the full `processDiscordMessageSerializedPhase(...)` — logs total serialized-phase duration
+  - fields: channelId, messageId, sessionKey
+
+- `src/auto-reply/reply/agent-runner.ts`
+  - timing around `runMemoryFlushIfNeeded(...)` — logs memory flush duration
+  - timing around `runAgentTurnWithFallback(...)` — logs total model turn duration
+  - fields: sessionKey, queueKey, provider, model
+
+- `src/auto-reply/reply/agent-runner-execution.ts`
+  - timing for first-model-attempt boundary inside `runWithModelFallback`'s run callback
+  - measures gap from `runAgentTurnWithFallback` entry to when the first provider/model attempt starts
+  - covers auth profile resolution, cooldown checks, fallback candidate evaluation
+  - fields: sessionKey, provider, model
+
+### Greppable log prefixes
+
+| Phase | Log prefix |
+|---|---|
+| Dispatch duration | `discord post-enqueue dispatch` |
+| Serialized phase total | `discord serialized-phase total` |
+| Memory flush | `agent-runner memory-flush` |
+| Model turn total | `agent-runner turn-with-fallback` |
+| First model attempt gap | `agent-runner first-model-attempt` |
+
+These complement the existing pre-enqueue logs:
+
+| Phase | Log prefix |
+|---|---|
+| Preflight | `discord pre-enqueue preflight` |
+| Pre-enqueue total | `discord pre-enqueue handler-to-enqueue` |
+
+### What this separates
+
+With the existing pre-enqueue instrumentation plus these new logs, the full timeline from Discord message receipt to model call is now decomposed into:
+
+1. Discord preflight delay (pre-enqueue, already instrumented)
+2. Dispatch delay (post-enqueue: media resolution, session recording, through agent run)
+3. Memory flush delay (isolated within dispatch)
+4. First model start delay (gap from turn entry to actual provider call)
+5. Total serialized phase (end-to-end from worker pickup to keyed-queue release)
+
+### Validation
+
+Focused local validation:
+
+```bash
+pnpm vitest src/discord/monitor/message-handler.process.test.ts src/discord/monitor/message-handler.queue.test.ts src/discord/monitor/message-handler.bot-self-filter.test.ts src/auto-reply/reply/agent-runner-helpers.test.ts src/auto-reply/reply/agent-runner-utils.test.ts src/auto-reply/reply/agent-runner-payloads.test.ts --run
+```
+
+All tests passed. No new type errors introduced (pnpm tsgo shows only pre-existing errors in unrelated files).
+
 ## Remaining follow-up
 
-1. Consider whether any unbound Discord cases can safely narrow queue keys further without breaking shared-session semantics.
-2. Surface queue metrics in the monitor UI or richer status views used during live incident response.
+1. Watch live logs for `preflight-channel-info` timeouts and queue-depth context on the VPS.
+2. Watch for `discord slow post-enqueue dispatch` and `agent-runner slow` logs to identify the dominant phase.
+3. If timeouts still occur often, consider moving preflight channel metadata off Carbon's queued REST client entirely.
+4. Surface queue metrics in the monitor UI or richer status views used during live incident response.
+5. If `first-model-attempt` gap is large, investigate auth profile cooldown or fallback candidate resolution.
+6. If dispatch is slow but memory flush and model start are fast, investigate `resolveMediaList` / `resolveForwardedMediaList` or `recordInboundSession` as stall candidates.

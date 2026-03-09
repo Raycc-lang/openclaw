@@ -19,7 +19,8 @@ import {
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
-import { logVerbose } from "../../globals.js";
+import { logVerbose, shouldLogVerbose } from "../../globals.js";
+import { formatDurationSeconds } from "../../infra/format-time/format-duration.ts";
 import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
@@ -46,6 +47,10 @@ import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
 import type { FollowupRun } from "./queue.js";
 import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
 import type { TypingSignaler } from "./typing-mode.js";
+
+// Slow-path log threshold for the gap between runAgentTurnWithFallback entry
+// and the first actual model/provider attempt inside runWithModelFallback.
+const AGENT_EXECUTION_SLOW_PHASE_MS = 3_000;
 
 export type RuntimeFallbackAttempt = {
   provider: string;
@@ -100,6 +105,8 @@ export async function runAgentTurnWithFallback(params: {
   resolvedVerboseLevel: VerboseLevel;
 }): Promise<AgentRunLoopResult> {
   const TRANSIENT_HTTP_RETRY_DELAY_MS = 2_500;
+  const turnEntryTimestamp = Date.now();
+  let didLogFirstModelAttempt = false;
   let didLogHeartbeatStrip = false;
   let autoCompactionCompleted = false;
   // Track payloads sent directly (not via pipeline) during tool flush to avoid duplicates.
@@ -194,6 +201,18 @@ export async function runAgentTurnWithFallback(params: {
       const fallbackResult = await runWithModelFallback({
         ...resolveModelFallbackOptions(params.followupRun.run),
         run: (provider, model, runOptions) => {
+          // Log time from turn entry to first actual model attempt (slow-path only).
+          if (!didLogFirstModelAttempt) {
+            didLogFirstModelAttempt = true;
+            const gapMs = Date.now() - turnEntryTimestamp;
+            if (gapMs >= AGENT_EXECUTION_SLOW_PHASE_MS || shouldLogVerbose()) {
+              const label = formatDurationSeconds(gapMs, { decimals: 1, unit: "seconds" });
+              const tag = gapMs >= AGENT_EXECUTION_SLOW_PHASE_MS ? "slow " : "";
+              logVerbose(
+                `agent-runner ${tag}first-model-attempt: ${label} (sessionKey=${params.sessionKey ?? "unknown"} provider=${provider} model=${model})`,
+              );
+            }
+          }
           // Notify that model selection is complete (including after fallback).
           // This allows responsePrefix template interpolation with the actual model.
           params.opts?.onModelSelected?.({

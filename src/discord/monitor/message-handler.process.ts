@@ -26,6 +26,7 @@ import { resolveDiscordPreviewStreamMode } from "../../config/discord-preview-st
 import { resolveMarkdownTableMode } from "../../config/markdown-tables.js";
 import { readSessionUpdatedAt, resolveStorePath } from "../../config/sessions.js";
 import { danger, logVerbose, shouldLogVerbose } from "../../globals.js";
+import { formatDurationSeconds } from "../../infra/format-time/format-duration.ts";
 import { convertMarkdownTables } from "../../markdown/tables.js";
 import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
 import { buildAgentSessionKey } from "../../routing/resolve-route.js";
@@ -59,6 +60,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 const DISCORD_TYPING_MAX_DURATION_MS = 20 * 60_000;
+
+// Slow-path log threshold for post-enqueue phases (dispatch, serialized phase).
+const DISCORD_SLOW_POST_ENQUEUE_MS = 3_000;
 
 function isProcessAborted(abortSignal?: AbortSignal): boolean {
   return Boolean(abortSignal?.aborted);
@@ -727,6 +731,7 @@ async function processDiscordMessageInternal(
   let dispatchResult: Awaited<ReturnType<typeof dispatchReplyFromConfig>> | null = null;
   let dispatchError = false;
   let dispatchAborted = false;
+  const dispatchStartedAt = Date.now();
   try {
     if (isProcessAborted(abortSignal)) {
       dispatchAborted = true;
@@ -795,6 +800,14 @@ async function processDiscordMessageInternal(
   } finally {
     dispatcher.markComplete();
     markRunComplete();
+    const dispatchDurationMs = Date.now() - dispatchStartedAt;
+    if (dispatchDurationMs >= DISCORD_SLOW_POST_ENQUEUE_MS || shouldLogVerbose()) {
+      const label = formatDurationSeconds(dispatchDurationMs, { decimals: 1, unit: "seconds" });
+      const tag = dispatchDurationMs >= DISCORD_SLOW_POST_ENQUEUE_MS ? "slow " : "";
+      const suffix = `channelId=${messageChannelId} messageId=${message.id} sessionKey=${route.sessionKey}`;
+      const logFn = dispatchDurationMs >= DISCORD_SLOW_POST_ENQUEUE_MS ? runtime.log : logVerbose;
+      logFn?.(`discord ${tag}post-enqueue dispatch: ${label} (${suffix})`);
+    }
   }
 
   const settleDispatchPromise = (async () => {
@@ -877,12 +890,24 @@ async function processDiscordMessageInternal(
 }
 
 export async function processDiscordMessageSerializedPhase(ctx: DiscordMessagePreflightContext) {
+  const phaseStartedAt = Date.now();
   await processDiscordMessageInternal(ctx, {
     awaitDeliveryIdle: false,
     onDetachedSettleError: (error) => {
       ctx.runtime.error?.(danger(`discord detached delivery settle failed: ${String(error)}`));
     },
   });
+  const phaseDurationMs = Date.now() - phaseStartedAt;
+  if (phaseDurationMs >= DISCORD_SLOW_POST_ENQUEUE_MS || shouldLogVerbose()) {
+    const label = formatDurationSeconds(phaseDurationMs, { decimals: 1, unit: "seconds" });
+    const tag = phaseDurationMs >= DISCORD_SLOW_POST_ENQUEUE_MS ? "slow " : "";
+    const messageId = ctx.message?.id ?? "unknown";
+    const channelId = ctx.messageChannelId ?? "unknown";
+    const sessionKey = ctx.route?.sessionKey ?? "unknown";
+    const suffix = `channelId=${channelId} messageId=${messageId} sessionKey=${sessionKey}`;
+    const logFn = phaseDurationMs >= DISCORD_SLOW_POST_ENQUEUE_MS ? ctx.runtime.log : logVerbose;
+    logFn?.(`discord ${tag}serialized-phase total: ${label} (${suffix})`);
+  }
 }
 
 export async function processDiscordMessage(ctx: DiscordMessagePreflightContext) {

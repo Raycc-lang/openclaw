@@ -15,8 +15,10 @@ import {
   updateSessionStoreEntry,
 } from "../../config/sessions.js";
 import type { TypingMode } from "../../config/types.js";
+import { logVerbose, shouldLogVerbose } from "../../globals.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import { formatDurationSeconds } from "../../infra/format-time/format-duration.ts";
 import { generateSecureUuid } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -58,6 +60,9 @@ import { createTypingSignaler } from "./typing-mode.js";
 import type { TypingController } from "./typing.js";
 
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
+
+// Slow-path log threshold for agent runner phases (memory flush, run start).
+const AGENT_RUNNER_SLOW_PHASE_MS = 3_000;
 
 export async function runReplyAgent(params: {
   commandBody: string;
@@ -218,6 +223,7 @@ export async function runReplyAgent(params: {
 
   await typingSignals.signalRunStart();
 
+  const memoryFlushStartedAt = Date.now();
   activeSessionEntry = await runMemoryFlushIfNeeded({
     cfg,
     followupRun,
@@ -233,6 +239,14 @@ export async function runReplyAgent(params: {
     storePath,
     isHeartbeat,
   });
+  const memoryFlushDurationMs = Date.now() - memoryFlushStartedAt;
+  if (memoryFlushDurationMs >= AGENT_RUNNER_SLOW_PHASE_MS || shouldLogVerbose()) {
+    const label = formatDurationSeconds(memoryFlushDurationMs, { decimals: 1, unit: "seconds" });
+    const tag = memoryFlushDurationMs >= AGENT_RUNNER_SLOW_PHASE_MS ? "slow " : "";
+    logVerbose(
+      `agent-runner ${tag}memory-flush: ${label} (sessionKey=${sessionKey ?? "unknown"} queueKey=${queueKey})`,
+    );
+  }
 
   const runFollowupTurn = createFollowupRunner({
     opts,
@@ -357,6 +371,16 @@ export async function runReplyAgent(params: {
       storePath,
       resolvedVerboseLevel,
     });
+    const runTurnDurationMs = Date.now() - runStartedAt;
+    if (runTurnDurationMs >= AGENT_RUNNER_SLOW_PHASE_MS || shouldLogVerbose()) {
+      const label = formatDurationSeconds(runTurnDurationMs, { decimals: 1, unit: "seconds" });
+      const tag = runTurnDurationMs >= AGENT_RUNNER_SLOW_PHASE_MS ? "slow " : "";
+      const provider = followupRun.run.provider ?? "unknown";
+      const model = followupRun.run.model ?? "unknown";
+      logVerbose(
+        `agent-runner ${tag}turn-with-fallback: ${label} (sessionKey=${sessionKey ?? "unknown"} queueKey=${queueKey} provider=${provider} model=${model})`,
+      );
+    }
 
     if (runOutcome.kind === "final") {
       return finalizeWithFollowup(runOutcome.payload, queueKey, runFollowupTurn);
