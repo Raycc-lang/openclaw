@@ -252,6 +252,55 @@ pnpm vitest src/discord/monitor/message-handler.process.test.ts src/discord/moni
 
 All tests passed. No new type errors introduced (pnpm tsgo shows only pre-existing errors in unrelated files).
 
+## 2026-03-09 post-enqueue typing-start stall fix
+
+The next confirmed post-enqueue stall was not memory flush or first-model-start. It was Discord typing startup, which runs after enqueue but before the deeper reply/model path settles.
+
+### Verified mechanism
+
+- `src/auto-reply/reply/agent-runner.ts`
+  - awaited `typingSignals.signalRunStart()` before the deeper run path
+- `src/discord/monitor/message-handler.process.ts`
+  - wired that callback to `sendTyping(...)`
+- `src/discord/monitor/typing.ts`
+  - used `client.fetchChannel(channelId)` followed by `channel.triggerTyping()`
+- `node_modules/@buape/carbon/dist/src/classes/RequestClient.js`
+  - Carbon REST uses a single per-client FIFO queue
+
+That meant a stuck or congested Carbon REST queue could block a Discord run even after the message had already been enqueued successfully.
+
+### First mitigation
+
+- `src/discord/monitor/typing.ts`
+  - added a 2 second local timeout around the initial typing-start await
+  - if typing startup exceeds that budget, the run continues instead of waiting indefinitely
+- `src/discord/monitor/typing.test.ts`
+  - regression coverage for late fetch completion after timeout
+
+### Follow-up finding from live logs
+
+After the timeout mitigation, the 20 minute stall stopped reproducing, but live logs still showed repeated:
+
+- `discord typing start timed out after 2000ms`
+- steadily increasing `queueDepth=...`
+- slow post-enqueue dispatch with no corresponding slow `agent-runner` phase logs
+
+The next verified issue was that timing out the await did **not** cancel the underlying Carbon `fetchChannel(...)` request. Repeated typing heartbeats could therefore keep adding stale requests to Carbon's FIFO queue and delay later Discord sends.
+
+### Additional mitigation
+
+- `src/discord/monitor/typing.ts`
+  - now suppresses new typing starts for the same channel while an older timed-out typing request is still unresolved
+  - this caps typing-related queue growth instead of letting heartbeats stack indefinitely
+- `src/discord/monitor/typing.test.ts`
+  - regression coverage for the timed-out-but-still-unresolved case
+
+### Why this helps
+
+- Discord runs no longer wait minutes just to begin typing.
+- Timed-out typing heartbeats can no longer pile up unbounded stale work in Carbon's serial REST queue.
+- Live logs still expose queue depth so remaining Discord delivery contention can be investigated with evidence.
+
 ## Remaining follow-up
 
 1. Watch live logs for `preflight-channel-info` timeouts and queue-depth context on the VPS.
@@ -259,4 +308,4 @@ All tests passed. No new type errors introduced (pnpm tsgo shows only pre-existi
 3. If timeouts still occur often, consider moving preflight channel metadata off Carbon's queued REST client entirely.
 4. Surface queue metrics in the monitor UI or richer status views used during live incident response.
 5. If `first-model-attempt` gap is large, investigate auth profile cooldown or fallback candidate resolution.
-6. If dispatch is slow but memory flush and model start are fast, investigate `resolveMediaList` / `resolveForwardedMediaList` or `recordInboundSession` as stall candidates.
+6. If dispatch is slow but memory flush and model start are fast, investigate Discord-side delivery work waiting behind queued Carbon REST operations.

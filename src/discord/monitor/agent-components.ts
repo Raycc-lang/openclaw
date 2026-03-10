@@ -1013,7 +1013,7 @@ async function dispatchDiscordComponentEvent(params: {
       },
       onReplyStart: async () => {
         try {
-          await sendTyping({ client: interaction.client, channelId: typingChannelId });
+          await sendTyping({ client: interaction.client, channelId: typingChannelId, log: logVerbose });
         } catch (err) {
           logVerbose(`discord: typing failed for component reply: ${String(err)}`);
         }

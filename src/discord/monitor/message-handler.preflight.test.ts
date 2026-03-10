@@ -81,6 +81,98 @@ describe("preflightDiscordMessage", () => {
   beforeEach(() => {
     sessionBindingTesting.resetSessionBindingAdaptersForTests();
     transcribeFirstAudioMock.mockReset();
+    vi.useRealTimers();
+  });
+
+  it("continues guild preflight when channel lookup stalls", async () => {
+    vi.useFakeTimers();
+    const channelId = "channel-slow-1";
+    const guildId = "guild-slow-1";
+    const botUserId = "openclaw-bot";
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const fetchChannel = vi.fn(
+      () =>
+        new Promise<unknown>((resolve) => {
+          // Delay completion until after the local preflight timeout fires.
+          resolveFetch = resolve;
+        }),
+    );
+    const runtimeLog = vi.fn();
+    const message = {
+      id: "m-slow-1",
+      content: `<@${botUserId}> hello`,
+      timestamp: new Date().toISOString(),
+      channelId,
+      attachments: [],
+      mentionedUsers: [
+        {
+          id: botUserId,
+          username: "OpenClaw",
+        },
+      ],
+      mentionedRoles: [],
+      mentionedEveryone: false,
+      author: {
+        id: "user-1",
+        bot: false,
+        username: "Alice",
+      },
+    } as unknown as import("@buape/carbon").Message;
+
+    const resultPromise = preflightDiscordMessage({
+      cfg: {
+        session: {
+          mainKey: "main",
+          scope: "per-sender",
+        },
+      } as import("../../config/config.js").OpenClawConfig,
+      discordConfig: {} as NonNullable<import("../../config/config.js").OpenClawConfig["channels"]>["discord"],
+      accountId: "default",
+      token: "token",
+      runtime: {
+        log: runtimeLog,
+        error: vi.fn(),
+        exit: vi.fn(),
+      } as unknown as import("../../runtime.js").RuntimeEnv,
+      botUserId,
+      guildHistories: new Map(),
+      historyLimit: 0,
+      mediaMaxBytes: 1_000_000,
+      textLimit: 2_000,
+      replyToMode: "all",
+      dmEnabled: true,
+      groupDmEnabled: true,
+      ackReactionScope: "direct",
+      groupPolicy: "open",
+      threadBindings: createNoopThreadBindingManager("default"),
+      data: {
+        channel_id: channelId,
+        guild_id: guildId,
+        guild: {
+          id: guildId,
+          name: "Guild One",
+        },
+        author: message.author,
+        message,
+      } as unknown as import("./listeners.js").DiscordMessageEvent,
+      client: {
+        fetchChannel,
+        rest: {
+          queue: [{ routeKey: "GET /channels/:id" }],
+        },
+      } as unknown as import("@buape/carbon").Client,
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    const result = await resultPromise;
+    resolveFetch?.(null);
+    await Promise.resolve();
+
+    expect(result).not.toBeNull();
+    expect(fetchChannel).toHaveBeenCalledWith(channelId);
+    expect(runtimeLog).toHaveBeenCalledWith(
+      expect.stringContaining("discord guild channel info timed out after 2000ms"),
+    );
   });
 
   it("drops bound-thread bot system messages to prevent ACP self-loop", async () => {

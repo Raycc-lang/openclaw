@@ -449,7 +449,7 @@ async function processDiscordMessageInternal(
   const chunkMode = resolveChunkMode(cfg, "discord", accountId);
 
   const typingCallbacks = createTypingCallbacks({
-    start: () => sendTyping({ client, channelId: typingChannelId }),
+    start: () => sendTyping({ client, channelId: typingChannelId, log: runtime.log }),
     onStartError: (err) => {
       logTypingFailure({
         log: logVerbose,

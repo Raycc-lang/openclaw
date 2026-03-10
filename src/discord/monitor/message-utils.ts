@@ -105,6 +105,23 @@ export function __resetDiscordChannelInfoCacheForTest() {
   DISCORD_CHANNEL_INFO_CACHE.clear();
 }
 
+export function peekDiscordChannelInfoCache(
+  channelId: string,
+): { hit: true; value: DiscordChannelInfo | null } | null {
+  const cached = DISCORD_CHANNEL_INFO_CACHE.get(channelId);
+  if (!cached) {
+    return null;
+  }
+  if (cached.expiresAt <= Date.now()) {
+    DISCORD_CHANNEL_INFO_CACHE.delete(channelId);
+    return null;
+  }
+  return {
+    hit: true,
+    value: cached.value,
+  };
+}
+
 function normalizeDiscordChannelId(value: unknown): string {
   if (typeof value === "string") {
     return value.trim();

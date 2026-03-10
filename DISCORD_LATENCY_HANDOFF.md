@@ -2,13 +2,18 @@
 
 ## Current recommendation
 
-The March 9 fix appears to have addressed the **post-enqueue same-session head-of-line blocking** path.
+The March 9 fixes appear to have addressed the two worst confirmed paths:
 
-The next thing to watch is the **pre-enqueue channel-info path**. The repo now has a mitigation in place:
+- **post-enqueue same-session head-of-line blocking**
+- **the original post-enqueue typing-start stall**
+
+The next thing to watch is the remaining **Discord REST queue contention** after enqueue. The repo now has mitigations in place for both pre-enqueue channel lookup and post-enqueue typing startup:
 
 - guild `preflight-channel-info` no longer blocks indefinitely
 - stalled guild channel lookup falls back after 2 seconds
 - the log context now includes cache state and Carbon REST queue depth when available
+- typing startup times out locally after 2 seconds instead of blocking the run indefinitely
+- repeated typing heartbeats for the same channel are suppressed while an older timed-out typing request is still unresolved
 
 ## What was verified
 
@@ -16,6 +21,7 @@ The next thing to watch is the **pre-enqueue channel-info path**. The repo now h
 - `src/discord/monitor/message-utils.ts` still used `client.fetchChannel(...)` on cache miss
 - `node_modules/@buape/carbon/dist/src/classes/RequestClient.js` runs REST through a single FIFO queue
 - the OpenClaw listener timeout does not cancel a request waiting inside that Carbon queue
+- the typing-start timeout does not cancel an already queued Carbon `fetchChannel(...)` request either
 
 Important nuance:
 
@@ -34,6 +40,11 @@ The relevant mitigation is now in place:
   - preflight can now probe the local channel-info cache before deciding whether it is about to hit Carbon REST
 - `src/discord/monitor/message-handler.preflight.test.ts`
   - regression test covers a stalled guild `fetchChannel(...)` lookup
+- `src/discord/monitor/typing.ts`
+  - typing startup is bounded by a 2 second local timeout
+  - new typing starts are skipped for a channel while a previous timed-out typing request is still unresolved
+- `src/discord/monitor/typing.test.ts`
+  - regression tests cover both late completion after timeout and the no-stacking guard
 
 ## Best next validation on VPS
 
@@ -42,18 +53,21 @@ The relevant mitigation is now in place:
 3. Inspect `journalctl -u openclaw-gateway.service` for:
    - `discord guild channel info timed out after 2000ms`
    - `discord pre-enqueue preflight-channel-info`
+   - `discord typing start timed out after 2000ms`
    - `cacheState=...`
    - `queueDepth=...`
-4. Confirm whether slow runs are now enqueueing quickly instead of waiting behind Carbon REST.
+4. Confirm whether queue depth still climbs monotonically during long Discord runs.
+5. Confirm whether slow runs are now enqueueing quickly and whether final reply delivery still waits behind Carbon REST.
 
 ## If latency still remains
 
-The next likely escalation is to bypass Carbon's queued REST client for preflight channel metadata entirely.
+The next likely escalation is to bypass Carbon's queued REST client for Discord typing and/or other latency-sensitive metadata entirely.
 
 That would mean one of:
 
 - a direct Discord REST fetch with its own timeout for channel metadata
-- a separate non-queued REST client just for preflight channel lookup
+- a direct Discord REST typing call with its own timeout/cancellation
+- a separate non-queued REST client just for latency-sensitive Discord lookups
 
 ## Focused tests
 
@@ -92,6 +106,6 @@ journalctl -u openclaw-gateway.service --since "1 hour ago" | grep -E 'agent-run
 
 ## Current single-stage suspect
 
-If 120 second listener timeouts still appear after this patch, the most suspicious stage remains `preflight-channel-info`, specifically queue wait inside Carbon before `fetchChannel(...)` begins.
+If 120 second listener timeouts still appear after this patch, the most suspicious pre-enqueue stage remains `preflight-channel-info`, specifically queue wait inside Carbon before `fetchChannel(...)` begins.
 
-If the pre-enqueue path is now fast but delays remain, the post-enqueue instrumentation will show which downstream phase is dominant.
+If the pre-enqueue path is now fast but delays remain, the strongest current post-enqueue suspect is final Discord reply delivery waiting behind previously queued Carbon REST work, especially timed-out typing-related requests.

@@ -20,6 +20,7 @@ import { resolveMentionGatingWithBypass } from "../../channels/mention-gating.js
 import { loadConfig } from "../../config/config.js";
 import { isDangerousNameMatchingEnabled } from "../../config/dangerous-name-matching.js";
 import { logVerbose, shouldLogVerbose } from "../../globals.js";
+import { formatDurationSeconds } from "../../infra/format-time/format-duration.ts";
 import { recordChannelActivity } from "../../infra/channel-activity.js";
 import {
   getSessionBindingService,
@@ -55,6 +56,7 @@ import type {
   DiscordMessagePreflightParams,
 } from "./message-handler.preflight.types.js";
 import {
+  peekDiscordChannelInfoCache,
   resolveDiscordChannelInfo,
   resolveDiscordMessageChannelId,
   resolveDiscordMessageText,
@@ -71,9 +73,155 @@ export type {
 } from "./message-handler.preflight.types.js";
 
 const DISCORD_BOUND_THREAD_SYSTEM_PREFIXES = ["⚙️", "🤖", "🧰"];
+const DISCORD_SLOW_PRE_ENQUEUE_STAGE_MS = 30_000;
+const DISCORD_GUILD_CHANNEL_INFO_TIMEOUT_MS = 2_000;
 
 function isPreflightAborted(abortSignal?: AbortSignal): boolean {
   return Boolean(abortSignal?.aborted);
+}
+
+function formatDiscordPreflightTimingContextSuffix(context: Record<string, unknown>) {
+  const parts = Object.entries(context)
+    .map(([key, value]) => {
+      const normalized =
+        typeof value === "string"
+          ? value.trim()
+          : typeof value === "number" || typeof value === "bigint"
+            ? String(value)
+            : null;
+      return normalized ? `${key}=${normalized}` : null;
+    })
+    .filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? ` (${parts.join(" ")})` : "";
+}
+
+function logDiscordPreflightTiming(params: {
+  runtime: DiscordMessagePreflightParams["runtime"];
+  stage: string;
+  durationMs: number;
+  context: Record<string, unknown>;
+}) {
+  const durationLabel = formatDurationSeconds(params.durationMs, {
+    decimals: 1,
+    unit: "seconds",
+  });
+  const suffix = formatDiscordPreflightTimingContextSuffix(params.context);
+  if (shouldLogVerbose()) {
+    logVerbose(`discord pre-enqueue ${params.stage}: ${durationLabel}${suffix}`);
+  }
+  if (params.durationMs >= DISCORD_SLOW_PRE_ENQUEUE_STAGE_MS) {
+    params.runtime.log?.(`discord slow pre-enqueue ${params.stage}: ${durationLabel}${suffix}`);
+  }
+}
+
+async function measureDiscordPreflightStage<T>(params: {
+  runtime: DiscordMessagePreflightParams["runtime"];
+  stage: string;
+  context: Record<string, unknown>;
+  run: () => Promise<T>;
+}): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    return await params.run();
+  } finally {
+    logDiscordPreflightTiming({
+      runtime: params.runtime,
+      stage: params.stage,
+      durationMs: Date.now() - startedAt,
+      context: params.context,
+    });
+  }
+}
+
+function measureDiscordPreflightStageSync<T>(params: {
+  runtime: DiscordMessagePreflightParams["runtime"];
+  stage: string;
+  context: Record<string, unknown>;
+  run: () => T;
+}): T {
+  const startedAt = Date.now();
+  try {
+    return params.run();
+  } finally {
+    logDiscordPreflightTiming({
+      runtime: params.runtime,
+      stage: params.stage,
+      durationMs: Date.now() - startedAt,
+      context: params.context,
+    });
+  }
+}
+
+function resolveDiscordRestQueueDepth(client: DiscordMessagePreflightParams["client"]): number | null {
+  const queue = (((client as unknown) as { rest?: unknown }).rest as { queue?: unknown } | undefined)
+    ?.queue;
+  return Array.isArray(queue) ? queue.length : null;
+}
+
+async function resolveDiscordChannelInfoForPreflight(params: {
+  client: DiscordMessagePreflightParams["client"];
+  runtime: DiscordMessagePreflightParams["runtime"];
+  abortSignal?: AbortSignal;
+  channelId: string;
+  isGuildMessage: boolean;
+  context: Record<string, unknown>;
+}): Promise<import("./message-utils.js").DiscordChannelInfo | null> {
+  const cached = peekDiscordChannelInfoCache(params.channelId);
+  const cacheState = cached
+    ? cached.value
+      ? "hit"
+      : "negative-hit"
+    : "miss";
+  const queueDepth = resolveDiscordRestQueueDepth(params.client);
+  if (!params.isGuildMessage) {
+    return resolveDiscordChannelInfo(params.client, params.channelId);
+  }
+  if (cached) {
+    return cached.value;
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  let abortListener: (() => void) | null = null;
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      const suffix = formatDiscordPreflightTimingContextSuffix({
+        ...params.context,
+        cacheState,
+        queueDepth,
+      });
+      params.runtime.log?.(
+        `discord guild channel info timed out after ${DISCORD_GUILD_CHANNEL_INFO_TIMEOUT_MS}ms${suffix}`,
+      );
+      resolve(null);
+    }, DISCORD_GUILD_CHANNEL_INFO_TIMEOUT_MS);
+    timeoutHandle.unref?.();
+  });
+  const abortPromise = new Promise<null>((resolve) => {
+    if (!params.abortSignal) {
+      return;
+    }
+    if (params.abortSignal.aborted) {
+      resolve(null);
+      return;
+    }
+    abortListener = () => resolve(null);
+    params.abortSignal.addEventListener("abort", abortListener, { once: true });
+  });
+
+  try {
+    return await Promise.race([
+      resolveDiscordChannelInfo(params.client, params.channelId),
+      timeoutPromise,
+      abortPromise,
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+    if (params.abortSignal && abortListener) {
+      params.abortSignal.removeEventListener("abort", abortListener);
+    }
+  }
 }
 
 function isBoundThreadBotSystemMessage(params: {
@@ -149,6 +297,11 @@ export async function preflightDiscordMessage(
     logVerbose(`discord: drop message ${message.id} (missing channel id)`);
     return null;
   }
+  const baseTimingContext = {
+    channelId: messageChannelId,
+    messageId: message.id,
+    guildId: params.data.guild_id,
+  };
 
   const allowBotsSetting = params.discordConfig?.allowBots;
   const allowBotsMode =
@@ -164,9 +317,15 @@ export async function preflightDiscordMessage(
   let pluralkitInfo: Awaited<ReturnType<typeof fetchPluralKitMessageInfo>> = null;
   if (shouldCheckPluralKit) {
     try {
-      pluralkitInfo = await fetchPluralKitMessageInfo({
-        messageId: message.id,
-        config: pluralkitConfig,
+      pluralkitInfo = await measureDiscordPreflightStage({
+        runtime: params.runtime,
+        stage: "preflight-pluralkit",
+        context: baseTimingContext,
+        run: () =>
+          fetchPluralKitMessageInfo({
+            messageId: message.id,
+            config: pluralkitConfig,
+          }),
       });
       if (isPreflightAborted(params.abortSignal)) {
         return null;
@@ -189,12 +348,36 @@ export async function preflightDiscordMessage(
   }
 
   const isGuildMessage = Boolean(params.data.guild_id);
-  const channelInfo = await resolveDiscordChannelInfo(params.client, messageChannelId);
+  const channelInfoCache = peekDiscordChannelInfoCache(messageChannelId);
+  const channelInfo = await measureDiscordPreflightStage({
+    runtime: params.runtime,
+    stage: "preflight-channel-info",
+    context: {
+      ...baseTimingContext,
+      isGuildMessage: isGuildMessage ? 1 : 0,
+      cacheState: channelInfoCache ? (channelInfoCache.value ? "hit" : "negative-hit") : "miss",
+      queueDepth: resolveDiscordRestQueueDepth(params.client),
+    },
+    run: () =>
+      resolveDiscordChannelInfoForPreflight({
+        client: params.client,
+        runtime: params.runtime,
+        abortSignal: params.abortSignal,
+        channelId: messageChannelId,
+        isGuildMessage,
+        context: baseTimingContext,
+      }),
+  });
   if (isPreflightAborted(params.abortSignal)) {
     return null;
   }
   const isDirectMessage = channelInfo?.type === ChannelType.DM;
   const isGroupDm = channelInfo?.type === ChannelType.GroupDM;
+  const messageKind = isDirectMessage ? "dm" : isGroupDm ? "group-dm" : "guild";
+  const resolvedTimingContext = {
+    ...baseTimingContext,
+    messageKind,
+  };
   logDebug(
     `[discord-preflight] channelId=${messageChannelId} guild_id=${params.data.guild_id} channelType=${channelInfo?.type} isGuild=${isGuildMessage} isDM=${isDirectMessage} isGroupDm=${isGroupDm}`,
   );
@@ -218,17 +401,26 @@ export async function preflightDiscordMessage(
       logVerbose("discord: drop dm (dmPolicy: disabled)");
       return null;
     }
-    const dmAccess = await resolveDiscordDmCommandAccess({
-      accountId: resolvedAccountId,
-      dmPolicy,
-      configuredAllowFrom: params.allowFrom ?? [],
-      sender: {
-        id: sender.id,
-        name: sender.name,
-        tag: sender.tag,
+    const dmAccess = await measureDiscordPreflightStage({
+      runtime: params.runtime,
+      stage: "preflight-dm-access",
+      context: {
+        ...resolvedTimingContext,
+        dmPolicy,
       },
-      allowNameMatching,
-      useAccessGroups,
+      run: () =>
+        resolveDiscordDmCommandAccess({
+          accountId: resolvedAccountId,
+          dmPolicy,
+          configuredAllowFrom: params.allowFrom ?? [],
+          sender: {
+            id: sender.id,
+            name: sender.name,
+            tag: sender.tag,
+          },
+          allowNameMatching,
+          useAccessGroups,
+        }),
     });
     if (isPreflightAborted(params.abortSignal)) {
       return null;
@@ -238,41 +430,60 @@ export async function preflightDiscordMessage(
       const allowMatchMeta = formatAllowlistMatchMeta(
         dmAccess.allowMatch.allowed ? dmAccess.allowMatch : undefined,
       );
-      await handleDiscordDmCommandDecision({
-        dmAccess,
-        accountId: resolvedAccountId,
-        sender: {
-          id: author.id,
-          tag: formatDiscordUserTag(author),
-          name: author.username ?? undefined,
+      await measureDiscordPreflightStage({
+        runtime: params.runtime,
+        stage: "preflight-dm-decision",
+        context: {
+          ...resolvedTimingContext,
+          dmPolicy,
+          decision: dmAccess.decision,
         },
-        onPairingCreated: async (code) => {
-          logVerbose(
-            `discord pairing request sender=${author.id} tag=${formatDiscordUserTag(author)} (${allowMatchMeta})`,
-          );
-          try {
-            await sendMessageDiscord(
-              `user:${author.id}`,
-              buildPairingReply({
-                channel: "discord",
-                idLine: `Your Discord user id: ${author.id}`,
-                code,
-              }),
-              {
-                token: params.token,
-                rest: params.client.rest,
-                accountId: params.accountId,
-              },
-            );
-          } catch (err) {
-            logVerbose(`discord pairing reply failed for ${author.id}: ${String(err)}`);
-          }
-        },
-        onUnauthorized: async () => {
-          logVerbose(
-            `Blocked unauthorized discord sender ${sender.id} (dmPolicy=${dmPolicy}, ${allowMatchMeta})`,
-          );
-        },
+        run: () =>
+          handleDiscordDmCommandDecision({
+            dmAccess,
+            accountId: resolvedAccountId,
+            sender: {
+              id: author.id,
+              tag: formatDiscordUserTag(author),
+              name: author.username ?? undefined,
+            },
+            onPairingCreated: async (code) => {
+              logVerbose(
+                `discord pairing request sender=${author.id} tag=${formatDiscordUserTag(author)} (${allowMatchMeta})`,
+              );
+              try {
+                await measureDiscordPreflightStage({
+                  runtime: params.runtime,
+                  stage: "preflight-dm-pairing-reply",
+                  context: {
+                    ...resolvedTimingContext,
+                    dmPolicy,
+                  },
+                  run: () =>
+                    sendMessageDiscord(
+                      `user:${author.id}`,
+                      buildPairingReply({
+                        channel: "discord",
+                        idLine: `Your Discord user id: ${author.id}`,
+                        code,
+                      }),
+                      {
+                        token: params.token,
+                        rest: params.client.rest,
+                        accountId: params.accountId,
+                      },
+                    ),
+                });
+              } catch (err) {
+                logVerbose(`discord pairing reply failed for ${author.id}: ${String(err)}`);
+              }
+            },
+            onUnauthorized: async () => {
+              logVerbose(
+                `Blocked unauthorized discord sender ${sender.id} (dmPolicy=${dmPolicy}, ${allowMatchMeta})`,
+              );
+            },
+          }),
       });
       return null;
     }
@@ -315,10 +526,16 @@ export async function preflightDiscordMessage(
   let earlyThreadParentName: string | undefined;
   let earlyThreadParentType: ChannelType | undefined;
   if (earlyThreadChannel) {
-    const parentInfo = await resolveDiscordThreadParentInfo({
-      client: params.client,
-      threadChannel: earlyThreadChannel,
-      channelInfo,
+    const parentInfo = await measureDiscordPreflightStage({
+      runtime: params.runtime,
+      stage: "preflight-thread-parent",
+      context: resolvedTimingContext,
+      run: () =>
+        resolveDiscordThreadParentInfo({
+          client: params.client,
+          threadChannel: earlyThreadChannel,
+          channelInfo,
+        }),
     });
     if (isPreflightAborted(params.abortSignal)) {
       return null;
@@ -332,19 +549,30 @@ export async function preflightDiscordMessage(
   const memberRoleIds = Array.isArray(params.data.rawMember?.roles)
     ? params.data.rawMember.roles.map((roleId: string) => String(roleId))
     : [];
-  const freshCfg = loadConfig();
-  const route = resolveAgentRoute({
-    cfg: freshCfg,
-    channel: "discord",
-    accountId: params.accountId,
-    guildId: params.data.guild_id ?? undefined,
-    memberRoleIds,
-    peer: {
-      kind: isDirectMessage ? "direct" : isGroupDm ? "group" : "channel",
-      id: isDirectMessage ? author.id : messageChannelId,
+  const { freshCfg, route } = measureDiscordPreflightStageSync({
+    runtime: params.runtime,
+    stage: "preflight-route-resolve",
+    context: {
+      ...resolvedTimingContext,
+      threadParentId: earlyThreadParentId,
     },
-    // Pass parent peer for thread binding inheritance
-    parentPeer: earlyThreadParentId ? { kind: "channel", id: earlyThreadParentId } : undefined,
+    run: () => {
+      const freshCfg = loadConfig();
+      const route = resolveAgentRoute({
+        cfg: freshCfg,
+        channel: "discord",
+        accountId: params.accountId,
+        guildId: params.data.guild_id ?? undefined,
+        memberRoleIds,
+        peer: {
+          kind: isDirectMessage ? "direct" : isGroupDm ? "group" : "channel",
+          id: isDirectMessage ? author.id : messageChannelId,
+        },
+        // Pass parent peer for thread binding inheritance
+        parentPeer: earlyThreadParentId ? { kind: "channel", id: earlyThreadParentId } : undefined,
+      });
+      return { freshCfg, route };
+    },
   });
   let threadBinding: SessionBindingRecord | undefined;
   threadBinding =
@@ -580,15 +808,23 @@ export async function preflightDiscordMessage(
 
   // Preflight audio transcription for mention detection in guilds.
   // This allows voice notes to be checked for mentions before being dropped.
-  const { hasTypedText, transcript: preflightTranscript } =
-    await resolveDiscordPreflightAudioMentionContext({
-      message,
-      isDirectMessage,
-      shouldRequireMention,
-      mentionRegexes,
-      cfg: params.cfg,
-      abortSignal: params.abortSignal,
-    });
+  const { hasTypedText, transcript: preflightTranscript } = await measureDiscordPreflightStage({
+    runtime: params.runtime,
+    stage: "preflight-audio-mention",
+    context: {
+      ...resolvedTimingContext,
+      requireMention: shouldRequireMention ? 1 : 0,
+    },
+    run: () =>
+      resolveDiscordPreflightAudioMentionContext({
+        message,
+        isDirectMessage,
+        shouldRequireMention,
+        mentionRegexes,
+        cfg: params.cfg,
+        abortSignal: params.abortSignal,
+      }),
+  });
   if (isPreflightAborted(params.abortSignal)) {
     return null;
   }
@@ -760,9 +996,18 @@ export async function preflightDiscordMessage(
     return null;
   }
   if (configuredBinding) {
-    const ensured = await ensureConfiguredAcpRouteReady({
-      cfg: freshCfg,
-      configuredBinding,
+    const ensured = await measureDiscordPreflightStage({
+      runtime: params.runtime,
+      stage: "preflight-configured-binding-ready",
+      context: {
+        ...resolvedTimingContext,
+        conversationId: configuredBinding.spec.conversationId,
+      },
+      run: () =>
+        ensureConfiguredAcpRouteReady({
+          cfg: freshCfg,
+          configuredBinding,
+        }),
     });
     if (!ensured.ok) {
       logVerbose(
